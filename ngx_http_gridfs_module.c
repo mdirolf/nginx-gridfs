@@ -5,6 +5,8 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#include "gridfs_c_helpers.h"
+
 static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive);
 
 static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* parent, void* child);
@@ -154,14 +156,20 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_buf_t* buffer;
     ngx_chain_t out;
 
-    char* response = "hello world";
+    gridfile_t gridfile;
 
     gridfs_config = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
 
+    gridfile = get_gridfile(gridfs_config->mongod_host.data,
+                            gridfs_config->mongod_port.data,
+                            gridfs_config->gridfs_db.data,
+                            gridfs_config->gridfs_root_collection.data,
+                            request->uri.data);
+
     request->headers_out.status = NGX_HTTP_OK;
-    request->headers_out.content_length_n = strlen(response);
-    request->headers_out.content_type.len = sizeof("text/plain") - 1;
-    request->headers_out.content_type.data = (u_char*) "text/plain";
+    request->headers_out.content_length_n = gridfile.length;
+    request->headers_out.content_type.len = strlen(gridfile.mimetype);
+    request->headers_out.content_type.data = (u_char*) gridfile.mimetype;
     ngx_http_send_header(request);
 
     buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
@@ -171,8 +179,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    buffer->pos = (u_char*)response;
-    buffer->last = (u_char*)response + strlen(response);
+    buffer->pos = (u_char*)gridfile.data;
+    buffer->last = (u_char*)gridfile.data + gridfile.length;
     buffer->memory = 1;
     buffer->last_buf = 1;
 
