@@ -1,16 +1,24 @@
 /*
  * Copyright (C) 2009 Michael Dirolf
  */
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+
+static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive);
+
+static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* parent, void* child);
 
 static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
 
-static nginx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
+static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
 
 typedef struct {
     ngx_str_t mongod_host;
     ngx_str_t mongod_port;
     ngx_str_t gridfs_db;
     ngx_str_t gridfs_root_collection;
+    ngx_flag_t enable;
 } ngx_http_gridfs_loc_conf_t;
 
 static ngx_command_t ngx_http_gridfs_commands[] = {
@@ -21,12 +29,12 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
         NULL
-    }
+    },
 
     {
         ngx_string("mongod_host"),
         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_set_str_slot,
+        ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, mongod_host),
         NULL
@@ -35,7 +43,7 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
     {
         ngx_string("mongod_port"),
         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_set_str_slot,
+        ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, mongod_port),
         NULL
@@ -44,7 +52,7 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
     {
         ngx_string("gridfs_db"),
         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_set_str_slot,
+        ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, gridfs_db),
         NULL
@@ -53,7 +61,7 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
     {
         ngx_string("gridfs_root_collection"),
         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_set_str_slot,
+        ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, gridfs_root_collection),
         NULL
@@ -73,6 +81,21 @@ static ngx_http_module_t ngx_http_gridfs_module_ctx = {
     ngx_http_gridfs_merge_loc_conf
 };
 
+ngx_module_t ngx_http_gridfs_module = {
+    NGX_MODULE_V1,
+    &ngx_http_gridfs_module_ctx,
+    ngx_http_gridfs_commands,
+    NGX_HTTP_MODULE,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NGX_MODULE_V1_PADDING
+};
+
 static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
     ngx_http_gridfs_loc_conf_t* gridfs_conf;
 
@@ -80,17 +103,22 @@ static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
     if (gridfs_conf == NULL) {
         return NGX_CONF_ERROR;
     }
-    gridfs_conf->mongodb_host = NGX_CONF_UNSET;
-    gridfs_conf->mongodb_port = NGX_CONF_UNSET;
+    /*    gridfs_conf->mongod_host = NGX_CONF_UNSET;
+    gridfs_conf->mongod_port = NGX_CONF_UNSET;
     gridfs_conf->gridfs_db = NGX_CONF_UNSET;
-    gridfs_conf->gridfs_root_collection = NGX_CONF_UNSET;
-    return conf;
+    gridfs_conf->gridfs_root_collection = NGX_CONF_UNSET;*/
+    return gridfs_conf;
 }
 
-static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* parent, void* child) {
-    ngx_conf_merge_str_value(child->mongodb_host, parent->mongodb_host, ngx_string("127.0.0.1"));
-    ngx_conf_merge_str_value(child->mongodb_port, parent->mongodb_port, ngx_string("27017"));
-    ngx_conf_merge_str_value(child->gridfs_root_collection, parent->gridfs_root_collection, ngx_string("fs"));
+static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_parent, void* void_child) {
+    ngx_http_gridfs_loc_conf_t* parent = void_parent;
+    ngx_http_gridfs_loc_conf_t* child = void_child;
+
+    /* TODO do we need to do more error checking here? */
+    ngx_conf_merge_str_value(child->mongod_host, parent->mongod_host, "127.0.0.1");
+    ngx_conf_merge_str_value(child->mongod_port, parent->mongod_port, "27017");
+    ngx_conf_merge_str_value(child->gridfs_root_collection, parent->gridfs_root_collection, "fs");
+    ngx_conf_merge_value(child->enable, parent->enable, 0);
 
     /* TODO requiring a gridfs_db setting - should we provide a default instead? */
     /* ngx_conf_merge_str_value(child->gridfs_db, parent->gridfs_db, ngx_string("gridfs")); */
@@ -98,24 +126,58 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* parent,
         if (parent->gridfs_db.data) {
             child->gridfs_db.len = parent->gridfs_db.len;
             child->gridfs_db.data = parent->gridfs_db.data;
-        }
-        else {
+        } else if (child->enable) {
             ngx_conf_log_error(NGX_LOG_EMERG, directive, 0,
-                               "must provide a gridfs_db setting to use the GridFS module");
+                               "Must provide a gridfs_db setting to use the GridFS module");
             return NGX_CONF_ERROR;
+        } else { /* TODO what do we do here? */
         }
     }
-}
-
-static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf) {
-    ngx_http_core_loc_conf_t* core_conf;
-
-    core_conf = ngx_http_conf_get_module_loc_conf(directive, ngx_http_core_module);
-    core_conf-> handler = ngx_http_gridfs_handler;
 
     return NGX_CONF_OK;
 }
 
-static nginx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
+static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* void_conf) {
+    ngx_http_core_loc_conf_t* core_conf;
+    ngx_http_gridfs_loc_conf_t* gridfs_conf = void_conf;
 
+    core_conf = ngx_http_conf_get_module_loc_conf(directive, ngx_http_core_module);
+    core_conf-> handler = ngx_http_gridfs_handler;
+
+    gridfs_conf->enable = 1;
+
+    return NGX_CONF_OK;
+}
+
+static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
+    ngx_http_gridfs_loc_conf_t* gridfs_config;
+    ngx_buf_t* buffer;
+    ngx_chain_t out;
+
+    char* response = "hello world";
+
+    gridfs_config = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
+
+    request->headers_out.status = NGX_HTTP_OK;
+    request->headers_out.content_length_n = strlen(response);
+    request->headers_out.content_type.len = sizeof("text/plain") - 1;
+    request->headers_out.content_type.data = (u_char*) "text/plain";
+    ngx_http_send_header(request);
+
+    buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
+    if (buffer == NULL) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Failed to allocate response buffer");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    buffer->pos = (u_char*)response;
+    buffer->last = (u_char*)response + strlen(response);
+    buffer->memory = 1;
+    buffer->last_buf = 1;
+
+    out.buf = buffer;
+    out.next = NULL;
+
+    return ngx_http_output_filter(request, &out);
 }
