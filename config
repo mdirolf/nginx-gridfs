@@ -2,7 +2,11 @@ if ! (cd $ngx_addon_dir; scons .); then
     exit 1
 fi
 
+libmongoclient=/Users/mike/10gen/mongo/libmongoclient.a
+libboost_thread=/opt/local/lib/libboost_thread.dylib
+libboost_filesystem=/opt/local/lib/libboost_filesystem.dylib
+
 ngx_addon_name=ngx_http_gridfs_module
 HTTP_MODULES="$HTTP_MODULES ngx_http_gridfs_module"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_gridfs_module.c"
-CORE_LIBS="$CORE_LIBS $ngx_addon_dir/gridfs_c_helpers.o"
+CORE_LIBS="$CORE_LIBS $ngx_addon_dir/gridfs_c_helpers.o $libmongoclient $libboost_thread $libboost_filesystem -lstdc++"

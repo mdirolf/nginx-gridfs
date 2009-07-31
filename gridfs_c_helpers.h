@@ -1,4 +1,9 @@
 typedef struct {
+    /*
+     * 0 - okay
+     * 1 - mongo exception (maybe couldn't connect)
+     * 2 - file doesn't exist
+     */
     int error_code;
 
     int length;
@@ -9,4 +14,4 @@ typedef struct {
 #ifdef __cplusplus
 extern "C"
 #endif
-gridfile_t get_gridfile(const unsigned char* mongod_host, const unsigned char* gridfs_db, const unsigned char* gridfs_root_collection, const unsigned char* filename);
+gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_db, const char* gridfs_root_collection, const char* filename);

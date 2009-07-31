@@ -149,7 +149,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_chain_t out;
     ngx_str_t location_name;
     ngx_str_t full_uri;
-    unsigned char* filename;
+    char* filename;
 
     gridfile_t gridfile;
 
@@ -164,7 +164,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                       "Invalid location name or uri");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    filename = (unsigned char*)malloc(sizeof(unsigned char) * (full_uri.len - location_name.len + 1));
+    filename = (char*)malloc(sizeof(char) * (full_uri.len - location_name.len + 1));
     if (filename == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                       "Failed to allocate filename buffer");
@@ -173,12 +173,22 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     memcpy(filename, full_uri.data + location_name.len, full_uri.len - location_name.len);
     filename[full_uri.len - location_name.len] = '\0';
 
-    gridfile = get_gridfile(gridfs_conf->mongod_host.data,
-                            gridfs_conf->gridfs_db.data,
-                            gridfs_conf->gridfs_root_collection.data,
+    gridfile = get_gridfile((const char*)gridfs_conf->mongod_host.data,
+                            (const char*)gridfs_conf->gridfs_db.data,
+                            (const char*)gridfs_conf->gridfs_root_collection.data,
                             filename);
 
     free(filename);
+
+    if (gridfile.error_code == 1) {
+        /* TODO log what exception mongo is throwing */
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Mongo exception");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    if (gridfile.error_code == 2) {
+        return NGX_HTTP_NOT_FOUND;
+    }
 
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = gridfile.length;
