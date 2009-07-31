@@ -1,5 +1,8 @@
 /*
  * Copyright (C) 2009 Michael Dirolf
+ *
+ * TODO range support http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+ * TODO single persistent connection
  */
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -17,7 +20,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
 
 typedef struct {
     ngx_str_t mongod_host;
-    ngx_str_t mongod_port;
     ngx_str_t gridfs_db;
     ngx_str_t gridfs_root_collection;
     ngx_flag_t enable;
@@ -39,15 +41,6 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
         ngx_conf_set_str_slot,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, mongod_host),
-        NULL
-    },
-
-    {
-        ngx_string("mongod_port"),
-        NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
-        NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_gridfs_loc_conf_t, mongod_port),
         NULL
     },
 
@@ -106,7 +99,6 @@ static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
         return NGX_CONF_ERROR;
     }
     /*    gridfs_conf->mongod_host = NGX_CONF_UNSET;
-    gridfs_conf->mongod_port = NGX_CONF_UNSET;
     gridfs_conf->gridfs_db = NGX_CONF_UNSET;
     gridfs_conf->gridfs_root_collection = NGX_CONF_UNSET;*/
     return gridfs_conf;
@@ -117,8 +109,7 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_pa
     ngx_http_gridfs_loc_conf_t* child = void_child;
 
     /* TODO do we need to do more error checking here? */
-    ngx_conf_merge_str_value(child->mongod_host, parent->mongod_host, "127.0.0.1");
-    ngx_conf_merge_str_value(child->mongod_port, parent->mongod_port, "27017");
+    ngx_conf_merge_str_value(child->mongod_host, parent->mongod_host, "127.0.0.1:27017");
     ngx_conf_merge_str_value(child->gridfs_root_collection, parent->gridfs_root_collection, "fs");
     ngx_conf_merge_value(child->enable, parent->enable, 0);
 
@@ -152,19 +143,42 @@ static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void
 }
 
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
-    ngx_http_gridfs_loc_conf_t* gridfs_config;
+    ngx_http_gridfs_loc_conf_t* gridfs_conf;
+    ngx_http_core_loc_conf_t* core_conf;
     ngx_buf_t* buffer;
     ngx_chain_t out;
+    ngx_str_t location_name;
+    ngx_str_t full_uri;
+    unsigned char* filename;
 
     gridfile_t gridfile;
 
-    gridfs_config = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
+    gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
+    core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
 
-    gridfile = get_gridfile(gridfs_config->mongod_host.data,
-                            gridfs_config->mongod_port.data,
-                            gridfs_config->gridfs_db.data,
-                            gridfs_config->gridfs_root_collection.data,
-                            request->uri.data);
+    location_name = core_conf->name;
+    full_uri = request->uri;
+    /* defensive */
+    if (full_uri.len < location_name.len) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Invalid location name or uri");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    filename = (unsigned char*)malloc(sizeof(unsigned char) * (full_uri.len - location_name.len + 1));
+    if (filename == NULL) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Failed to allocate filename buffer");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    memcpy(filename, full_uri.data + location_name.len, full_uri.len - location_name.len);
+    filename[full_uri.len - location_name.len] = '\0';
+
+    gridfile = get_gridfile(gridfs_conf->mongod_host.data,
+                            gridfs_conf->gridfs_db.data,
+                            gridfs_conf->gridfs_root_collection.data,
+                            filename);
+
+    free(filename);
 
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = gridfile.length;
