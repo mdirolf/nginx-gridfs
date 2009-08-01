@@ -13,17 +13,17 @@ Dependencies
 
 Installation
 ============
-Installing Nginx modules requires rebuilding Nginx from source.
+Installing Nginx modules requires rebuilding Nginx from source:
 
- * Grab the Nginx source from `here <http://nginx.net/>`_ and unpack
-   it.
- * Clone this repository somewhere on your machine.
- * Change to the directory containing the Nginx source.
- * Now build::
+* Grab the Nginx source from `here <http://nginx.net/>`_ and unpack
+  it.
+* Clone this repository somewhere on your machine.
+* Change to the directory containing the Nginx source.
+* Now build::
 
-     $ ./configure --add-module=/path/to/nginx-gridfs/source/
-     $ make
-     $ make install
+    $ ./configure --add-module=/path/to/nginx-gridfs/source/
+    $ make
+    $ make install
 
 Configuration
 =============
