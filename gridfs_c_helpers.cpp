@@ -42,7 +42,7 @@ extern "C" gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_d
         0,
         contents.size(),
         contents.c_str(),
-        "text/plain"
+        "text/plain" /* TODO use real mimetype */
     };
 
     return result;
