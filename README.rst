@@ -11,7 +11,7 @@ content directly from `MongoDB <http://www.mongodb.org/>`_'s `GridFS
 Dependencies
 ============
 **nginx-gridfs** requires the MongoDB C++ client library (which is
-installed by default when MongoDB is installed. It also needs to link
+installed by default when MongoDB is installed). It also needs to link
 against the `boost libraries <http://www.boost.org/>`_, since the
 MongoDB client depends on them.
 
@@ -23,6 +23,7 @@ Installing Nginx modules requires rebuilding Nginx from source:
 * Clone this repository somewhere on your machine.
 * Change to the directory containing the Nginx source.
 * Now build::
+
     $ ./configure --add-module=/path/to/nginx-gridfs/source/
     $ make
     $ make install
