@@ -26,6 +26,8 @@ typedef struct {
 } ngx_http_gridfs_loc_conf_t;
 
 static ngx_command_t ngx_http_gridfs_commands[] = {
+    /* TODO since we require gridfs_db setting, should that just enable the
+     * module as well? */
     {
         ngx_string("gridfs"),
         NGX_HTTP_LOC_CONF | NGX_CONF_NOARGS,

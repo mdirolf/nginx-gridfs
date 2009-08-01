@@ -4,11 +4,26 @@ nginx-gridfs
 
 About
 =====
-nginx-gridfs is an Nginx module to serve content directly from MongoDB's GridFS.
+**nginx-gridfs** is an Nginx module to serve content directly from
+MongoDB's GridFS.
+
+Dependencies
+============
+
 
 Installation
 ============
-This is a bit of a work in progress.
+Installing Nginx modules requires rebuilding Nginx from source.
+
+ * Grab the Nginx source from `here <http://nginx.net/>`_ and unpack
+   it.
+ * Clone this repository somewhere on your machine.
+ * Change to the directory containing the Nginx source.
+ * Now build::
+
+     $ ./configure --add-module=/path/to/nginx-gridfs/source/
+     $ make
+     $ make install
 
 Configuration
 =============
