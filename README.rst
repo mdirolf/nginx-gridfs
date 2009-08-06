@@ -22,6 +22,17 @@ Installing Nginx modules requires rebuilding Nginx from source:
 * Grab the `Nginx source <http://nginx.net/>`_ and unpack it.
 * Clone this repository somewhere on your machine.
 * Change to the directory containing the Nginx source.
+* Set environment variables::
+
+    $ export MONGO_INCLUDE_PATH=/path/to/mongodb/includes/
+    $ export LIBMONGOCLIENT=/path/to/libmongoclient/file
+    $ export BOOST_INCLUDE_PATH=/path/to/boost/includes/
+    $ export LIBBOOST_THREAD=/path/to/libboost_thread/file
+    $ export LIBBOOST_FILESYSTEM=/path/to/libboost_filesystem/file
+
+  Ideally there will be a better way to do this eventually, but this
+  is easy.
+
 * Now build::
 
     $ ./configure --add-module=/path/to/nginx-gridfs/source/

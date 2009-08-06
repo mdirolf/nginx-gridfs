@@ -1,5 +1,9 @@
 # -*- mode: python; -*-
+import os
+
 Object("gridfs_c_helpers.cpp",
-       CPPPATH=['/Users/mike/10gen/mongo', '/usr/local/include', '/opt/local/include'],
-       LIBS=['mongoclient', 'boost_thread', 'boost_filesystem'],
-       LIBPATH=['/Users/mike/10gen/mongo', '/usr/local/lib', '/opt/local/lib'])
+       CPPPATH=[os.environ.get("MONGO_INCLUDE_PATH"), os.environ.get("BOOST_INCLUDE_PATH")],
+       LIBS=[os.environ.get("LIBMONGOCLIENT"),
+             os.environ.get("LIBBOOST_THREAD"),
+             os.environ.get("LIBBOOST_FILESYSTEM")])
+
