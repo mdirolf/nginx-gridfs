@@ -57,3 +57,7 @@ module for this location and **gridfs_db** to specify the database in
 which to store files. **mongod_host** and **gridfs_root_collection**
 can be specified but default to the values given in the configuration
 above.
+
+License
+=======
+**nginx-gridfs** is licensed under the Apache License, Version 2.0. See *LICENSE* for details.
