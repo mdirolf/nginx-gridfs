@@ -30,8 +30,13 @@ Installing Nginx modules requires rebuilding Nginx from source:
     $ export LIBBOOST_THREAD=/path/to/libboost_thread/file
     $ export LIBBOOST_FILESYSTEM=/path/to/libboost_filesystem/file
 
+* For some versions of boost you'll need to set the following as
+  well::
+
+    $ export LIBBOOST_SYSTEM=/path/to/libboost_system/file
+
   Ideally there will be a better way to do this eventually, but this
-  is easy.
+  was easy to implement.
 
 * Now build::
 
@@ -68,6 +73,12 @@ Known Issues / TODO / Things You Should Hack On
 * Use a single persistent connection
 * URL decode filenames
 * Better error handling / logging
+* Better config / build process (just embed C driver?)
+
+Credits
+=======
+
+* Sho Fukamachi (sho) - towards compatibility with newer boost versions
 
 License
 =======
