@@ -58,6 +58,17 @@ which to store files. **mongod_host** and **gridfs_root_collection**
 can be specified but default to the values given in the configuration
 above.
 
+Known Issues / TODO / Things You Should Hack On
+===============================================
+
+* Some issues with large files
+* Use mimetype stored in GridFS file (also maybe fall back to guessing
+  by extension?)
+* HTTP range support for partial downloads
+* Use a single persistent connection
+* URL decode filenames
+* Better error handling / logging
+
 License
 =======
 **nginx-gridfs** is licensed under the Apache License, Version 2.0. See *LICENSE* for details.
