@@ -50,15 +50,20 @@ extern "C" gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_d
         return no_file;
     }
 
-    std::ostringstream oss;
+    std::stringstream oss;
     gridfile.write(oss);
-    std::string contents = oss.str();
+    char* buffer;
+    long size;
+    buffer = new char[size];
+
+    size = gridfile.getContentLength();
+    oss.read(buffer, size);
 
     gridfile_t result = {
         0,
-        contents.size(),
-        contents.c_str(),
-        "text/plain" /* TODO use real mimetype */
+        size,
+        buffer,
+        gridfile.getContentType().c_str()
     };
 
     return result;
