@@ -209,8 +209,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = gridfile.length;
-    request->headers_out.content_type.len = strlen(gridfile.mimetype);
-    request->headers_out.content_type.data = (u_char*) gridfile.mimetype;
     ngx_http_send_header(request);
 
     buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
