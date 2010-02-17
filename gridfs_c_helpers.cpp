@@ -50,12 +50,12 @@ extern "C" gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_d
         return no_file;
     }
 
-    std::stringstream oss;
+    std::stringstream oss (std::stringstream::in | std::stringstream::out | std::stringstream::binary);
     gridfile.write(oss);
+
     char* buffer;
     long size = gridfile.getContentLength();
     buffer = new char[size];
-
     oss.read(buffer, size);
 
     gridfile_t result = {
@@ -66,4 +66,8 @@ extern "C" gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_d
     };
 
     return result;
+}
+
+extern "C" void gridfile_delete(const char* data) {
+    delete[] data;
 }

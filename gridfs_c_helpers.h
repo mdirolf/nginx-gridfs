@@ -31,3 +31,8 @@ typedef struct {
 extern "C"
 #endif
 gridfile_t get_gridfile(const char* mongod_host, const char* gridfs_db, const char* gridfs_root_collection, const char* filename);
+
+#ifdef __cplusplus
+extern "C"
+#endif
+void gridfile_delete(const char* data);

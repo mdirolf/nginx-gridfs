@@ -189,11 +189,15 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     filename[full_uri.len - location_name.len] = '\0';
 
     /* TODO url decode filename */
-
     gridfile = get_gridfile((const char*)gridfs_conf->mongod_host.data,
                             (const char*)gridfs_conf->gridfs_db.data,
                             (const char*)gridfs_conf->gridfs_root_collection.data,
                             filename);
+
+    char* databuffer = ngx_pcalloc(request->pool, sizeof(char) * gridfile.length);
+    memcpy(databuffer, gridfile.data, gridfile.length);
+    gridfile_delete(gridfile.data);
+    gridfile.data = databuffer;
 
     free(filename);
 
