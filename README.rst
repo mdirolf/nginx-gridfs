@@ -83,6 +83,8 @@ Credits
 =======
 
 * Sho Fukamachi (sho) - towards compatibility with newer boost versions
+* Olivier Bregeras (stunti) - better handling of binary content
+* Chris Heald (cheald) - better handling of binary content
 
 License
 =======
