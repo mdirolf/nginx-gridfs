@@ -88,5 +88,6 @@ Credits
 
 License
 =======
-**nginx-gridfs** is licensed under the Apache License, Version
-2.0. See *LICENSE* for details.
+**nginx-gridfs** is dual licensed under the Apache License, Version
+2.0 and the GNU General Public License, either version 2 or (at your
+option) any later version. See *LICENSE* for details.
