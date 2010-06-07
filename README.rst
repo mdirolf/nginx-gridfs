@@ -10,10 +10,8 @@ content directly from `MongoDB <http://www.mongodb.org/>`_'s `GridFS
 
 Dependencies
 ============
-**nginx-gridfs** requires the MongoDB C++ client library (which is
-installed by default when MongoDB is installed). It also needs to link
-against the `boost libraries <http://www.boost.org/>`_, since the
-MongoDB client depends on them.
+**nginx-gridfs** requires the Mongo-C-Driver which is a submodule
+to this repository.
 
 Installation
 ============
@@ -22,22 +20,6 @@ Installing Nginx modules requires rebuilding Nginx from source:
 * Grab the `Nginx source <http://nginx.net/>`_ and unpack it.
 * Clone this repository somewhere on your machine.
 * Change to the directory containing the Nginx source.
-* Set environment variables::
-
-    $ export MONGO_INCLUDE_PATH=/path/to/mongodb/includes/
-    $ export LIBMONGOCLIENT=/path/to/libmongoclient/file
-    $ export BOOST_INCLUDE_PATH=/path/to/boost/includes/
-    $ export LIBBOOST_THREAD=/path/to/libboost_thread/file
-    $ export LIBBOOST_FILESYSTEM=/path/to/libboost_filesystem/file
-
-* For some versions of boost you'll need to set the following as
-  well::
-
-    $ export LIBBOOST_SYSTEM=/path/to/libboost_system/file
-
-  Ideally there will be a better way to do this eventually, but this
-  was easy to implement.
-
 * Now build::
 
     $ ./configure --add-module=/path/to/nginx-gridfs/source/
@@ -76,7 +58,6 @@ Known Issues / TODO / Things You Should Hack On
 * Use a single persistent connection
 * URL decode filenames
 * Better error handling / logging
-* Better config / build process (just embed C driver?)
 * Support for getting files by _id (in case there are duplicate filenames)
 
 Credits
@@ -85,6 +66,7 @@ Credits
 * Sho Fukamachi (sho) - towards compatibility with newer boost versions
 * Olivier Bregeras (stunti) - better handling of binary content
 * Chris Heald (cheald) - better handling of binary content
+* Chris Triolo (ctriolo) - easier build process
 
 License
 =======

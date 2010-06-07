@@ -37,11 +37,14 @@
  * TODO range support http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
  * TODO single persistent connection
  */
+
+#include <string.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-
-#include "gridfs_c_helpers.h"
+#include "mongo-c-driver/src/mongo.h"
+#include "mongo-c-driver/src/gridfs.h"
+#define MONGO_USE_LONG_LONG_INT
 
 static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive);
 
@@ -185,8 +188,17 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_str_t location_name;
     ngx_str_t full_uri;
     char* filename;
-
-    gridfile_t gridfile;
+    mongo_connection conn;
+    mongo_connection_options options;
+    gridfs gfs_object;
+    gridfs* gfs = &gfs_object;
+    gridfile gfile_object;
+    gridfile* gfile = &gfile_object;
+    char ip[16];
+    char * current  = ip;
+    char * port;
+    gridfs_offset length;
+    char* databuffer;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
@@ -209,30 +221,46 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     filename[full_uri.len - location_name.len] = '\0';
 
     /* TODO url decode filename */
-    gridfile = get_gridfile((const char*)gridfs_conf->mongod_host.data,
-                            (const char*)gridfs_conf->gridfs_db.data,
-                            (const char*)gridfs_conf->gridfs_root_collection.data,
-                            filename);
-
-    char* databuffer = ngx_pcalloc(request->pool, sizeof(char) * gridfile.length);
-    memcpy(databuffer, gridfile.data, gridfile.length);
-    gridfile_delete(gridfile.data);
-    gridfile.data = databuffer;
+    
+    /* Split the host into ip and port */
+    port = (char*)gridfs_conf->mongod_host.data;
+    while ((*port) != ':') {
+      *current = *port;
+      current++;
+      port++;
+    }
+    *current='\0';
+    port++;
+    
+    /* Attempt Connection to MongoDB */
+    strcpy(options.host, ip);
+    options.port = atoi(port);
+    if (mongo_connect( &conn, &options ) != mongo_conn_success) {
+      /* TODO log what exception mongo is throwing */
+      ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+		    "Mongo exception");
+      return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    } 
+    
+    /* Attempt finding GridFile of filename */
+    gridfs_init(&conn,
+		(const char*)gridfs_conf->gridfs_db.data,
+		(const char*)gridfs_conf->gridfs_root_collection.data,
+		gfs);
+    gridfs_store_buffer(gfs, port, 5, "p", NULL);
+    if (!gridfs_find_filename(gfs, filename, gfile)) {
+      return NGX_HTTP_NOT_FOUND;
+    }
+    
+    /* Store data in buffer */
+    length = gridfile_get_contentlength(gfile);
+    databuffer = ngx_pcalloc(request->pool, sizeof(char) * length);
+    gridfile_write_buffer(gfile, databuffer);
 
     free(filename);
 
-    if (gridfile.error_code == 1) {
-        /* TODO log what exception mongo is throwing */
-        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Mongo exception");
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-    if (gridfile.error_code == 2) {
-        return NGX_HTTP_NOT_FOUND;
-    }
-
     request->headers_out.status = NGX_HTTP_OK;
-    request->headers_out.content_length_n = gridfile.length;
+    request->headers_out.content_length_n = length;
     ngx_http_set_content_type(request);
     ngx_http_send_header(request);
 
@@ -243,8 +271,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    buffer->pos = (u_char*)gridfile.data;
-    buffer->last = (u_char*)gridfile.data + gridfile.length;
+    buffer->pos = (u_char*)databuffer;
+    buffer->last = (u_char*)databuffer + length;
     buffer->memory = 1;
     buffer->last_buf = 1;
 
