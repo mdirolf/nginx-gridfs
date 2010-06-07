@@ -1,16 +1,5 @@
-SETTING_MISSING="environment variable must be set - see README.rst for details"
-
-: ${MONGO_INCLUDE_PATH:?$SETTING_MISSING}
-: ${BOOST_INCLUDE_PATH:?$SETTING_MISSING}
-: ${LIBMONGOCLIENT:?$SETTING_MISSING}
-: ${LIBBOOST_THREAD:?$SETTING_MISSING}
-: ${LIBBOOST_FILESYSTEM:?$SETTING_MISSING}
-
-if ! (cd $ngx_addon_dir; scons .); then
-    exit 1
-fi
-
 ngx_addon_name=ngx_http_gridfs_module
 HTTP_MODULES="$HTTP_MODULES ngx_http_gridfs_module"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_gridfs_module.c"
-CORE_LIBS="$CORE_LIBS $ngx_addon_dir/gridfs_c_helpers.o $LIBMONGOCLIENT $LIBBOOST_THREAD $LIBBOOST_FILESYSTEM $LIBBOOST_SYSTEM -lstdc++"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_gridfs_module.c $ngx_addon_dir/mongo-c-driver/src/bson.c $ngx_addon_dir/mongo-c-driver/src/mongo.c $ngx_addon_dir/mongo-c-driver/src/md5.c $ngx_addon_dir/mongo-c-driver/src/gridfs.c $ngx_addon_dir/mongo-c-driver/src/numbers.c"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/mongo-c-driver/src/*.h"
+CFLAGS="$CFLAGS --std=c99 -Isrc"
