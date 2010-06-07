@@ -247,7 +247,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 		(const char*)gridfs_conf->gridfs_db.data,
 		(const char*)gridfs_conf->gridfs_root_collection.data,
 		gfs);
-    gridfs_store_buffer(gfs, port, 5, "p", NULL);
     if (!gridfs_find_filename(gfs, filename, gfile)) {
       return NGX_HTTP_NOT_FOUND;
     }
