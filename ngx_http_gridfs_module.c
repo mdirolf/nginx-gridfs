@@ -184,7 +184,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_http_gridfs_loc_conf_t* gridfs_conf;
     ngx_http_core_loc_conf_t* core_conf;
     ngx_buf_t* buffer;
-    ngx_chain_t out;
+    ngx_chain_t* out = NULL;
     ngx_str_t location_name;
     ngx_str_t full_uri;
     char* filename;
@@ -195,10 +195,16 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     gridfile gfile_object;
     gridfile* gfile = &gfile_object;
     char ip[16];
-    char * current  = ip;
-    char * port;
+    char* current  = ip;
+    char* port;
     gridfs_offset length;
-    char* databuffer;
+    char* data;
+    ngx_uint_t chunksize;
+    ngx_uint_t numchunks;
+    ngx_uint_t chunklength;
+    ngx_chain_t* current_chain_link;
+    ngx_chain_t* previous_chain_link = NULL;
+    ngx_uint_t i;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
@@ -250,33 +256,54 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     if (!gridfs_find_filename(gfs, filename, gfile)) {
       return NGX_HTTP_NOT_FOUND;
     }
-    
-    /* Store data in buffer */
-    length = gridfile_get_contentlength(gfile);
-    databuffer = ngx_pcalloc(request->pool, sizeof(char) * length);
-    gridfile_write_buffer(gfile, databuffer);
-
     free(filename);
 
+    /* Get information about the file */
+    length = gridfile_get_contentlength(gfile);
+    chunksize = gridfile_get_chunksize(gfile);
+    numchunks = gridfile_get_numchunks(gfile);
+
+    /* Set headers */
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = length;
     ngx_http_set_content_type(request);
     ngx_http_send_header(request);
 
-    buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
-    if (buffer == NULL) {
+    /* Read and serve chunk by chunk */
+    for (i = 0; i < numchunks; i++) {
+
+      current_chain_link = ngx_pcalloc(request->pool, sizeof(ngx_chain_t));
+      if (current_chain_link == NULL) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Failed to allocate response chain");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+      }
+      
+      buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
+      if (buffer == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                       "Failed to allocate response buffer");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
+      }
+      
+      data = ngx_pcalloc(request->pool, sizeof(char)*chunksize);
+      if (data == NULL) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Failed to allocate response data");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+      }
+      
+      chunklength = gridfile_read(gfile, chunksize, data);
+      buffer->pos = (u_char*)data;
+      buffer->last = (u_char*)data + chunklength;
+      buffer->memory = 1;
+      if (i != numchunks - 1) buffer->last_buf = 0;
+      else buffer->last_buf = 1;
+      current_chain_link->buf = buffer;
+      current_chain_link->next = NULL;
+      if (i == 0) out = current_chain_link;
+      else previous_chain_link->next = current_chain_link;
+      previous_chain_link = current_chain_link;
     }
-
-    buffer->pos = (u_char*)databuffer;
-    buffer->last = (u_char*)databuffer + length;
-    buffer->memory = 1;
-    buffer->last_buf = 1;
-
-    out.buf = buffer;
-    out.next = NULL;
-
-    return ngx_http_output_filter(request, &out);
+    return ngx_http_output_filter(request, out);
 }
