@@ -202,6 +202,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_uint_t chunksize;
     ngx_uint_t numchunks;
     ngx_uint_t chunklength;
+    char* contenttype;
     ngx_uint_t i;
     ngx_int_t rc = NGX_OK;
 
@@ -261,11 +262,16 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     length = gridfile_get_contentlength(gfile);
     chunksize = gridfile_get_chunksize(gfile);
     numchunks = gridfile_get_numchunks(gfile);
+    contenttype = (char*)gridfile_get_contenttype(gfile);
 
     /* Set headers */
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = length;
-    ngx_http_set_content_type(request);
+    if (contenttype != NULL) {
+      request->headers_out.content_type.len = strlen(contenttype);
+      request->headers_out.content_type.data = (u_char*)contenttype;
+    }
+    else ngx_http_set_content_type(request);
     ngx_http_send_header(request);
 
     /* Read and serve chunk by chunk */
