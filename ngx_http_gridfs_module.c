@@ -301,8 +301,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 		(const char*)gridfs_conf->gridfs_root_collection.data,
 		gfs);
     if (!gridfs_find_filename(gfs, filename, gfile)) {
-      ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-		      "malformed url should not reach here");
       return NGX_HTTP_NOT_FOUND;
     }
     free(filename);
