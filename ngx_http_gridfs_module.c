@@ -39,6 +39,7 @@
  */
 
 #include <string.h>
+#include <ctype.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -180,6 +181,49 @@ static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void
     return NGX_CONF_OK;
 }
 
+#include <string.h>
+#include <stdlib.h>
+
+static char h_digit(char hex)
+{
+  return isdigit(hex) ? hex - '0': tolower(hex)-'a'+10;
+}
+
+static int htoi(char* h)
+{
+  char ok[] = "0123456789AaBbCcDdEeFf";
+  if (strchr(ok, h[0])==NULL || strchr(ok,h[1])==NULL 
+      || h[0]=='\0'|| h[1]=='\0')
+    return -1;
+  return h_digit(h[0])*16 + h_digit(h[1]);
+}
+
+static int url_decode(char * filename)
+{
+  char * read = filename;
+  char * write = filename;
+  char hex[3];
+  int c;
+  
+  hex[2] = '\0';
+  while (*read != '\0'){
+    if (*read == '%') {
+      hex[0] = *(++read);
+      if (hex[0] == '\0') return 0;
+      hex[1] = *(++read);
+      if (hex[1] == '\0') return 0;
+      c = htoi(hex);
+      if (c == -1) return 0;
+      *write = (char)c;
+    }
+    else *write = *read;
+    read++;
+    write++;
+  }
+  *write = '\0';
+  return 1;
+}
+
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_http_gridfs_loc_conf_t* gridfs_conf;
     ngx_http_core_loc_conf_t* core_conf;
@@ -225,9 +269,12 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     }
     memcpy(filename, full_uri.data + location_name.len, full_uri.len - location_name.len);
     filename[full_uri.len - location_name.len] = '\0';
+    if (!url_decode(filename)) {
+      ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+		    "Malformed request");
+      return NGX_HTTP_BAD_REQUEST;
+    }
 
-    /* TODO url decode filename */
-    
     /* Split the host into ip and port */
     port = (char*)gridfs_conf->mongod_host.data;
     while ((*port) != ':') {
@@ -254,6 +301,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 		(const char*)gridfs_conf->gridfs_root_collection.data,
 		gfs);
     if (!gridfs_find_filename(gfs, filename, gfile)) {
+      ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+		      "malformed url should not reach here");
       return NGX_HTTP_NOT_FOUND;
     }
     free(filename);
