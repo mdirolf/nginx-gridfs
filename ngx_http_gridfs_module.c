@@ -175,106 +175,106 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_pa
 static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* void_conf) {
     ngx_http_core_loc_conf_t* core_conf;
     ngx_http_gridfs_loc_conf_t* gridfs_conf = void_conf;
-
+  
     core_conf = ngx_http_conf_get_module_loc_conf(directive, ngx_http_core_module);
     core_conf-> handler = ngx_http_gridfs_handler;
-
+  
     gridfs_conf->enable = 1;
-
+  
     return NGX_CONF_OK;
 }
 
 static char* ngx_http_mongo_host(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-  mongo_connection **field;
-  mongo_connection_options options;
-  char *p = conf; 
-  ngx_str_t *value; 
-  ngx_conf_post_t  *post;
-  char ip[16];
-  char* current = ip;
-  char* port;
-
-  field = (mongo_connection **) (p + cmd->offset);
-
-  if (*field) {
-    return "is duplicate";
-  }
-
-  *field = ngx_palloc(cf->pool, sizeof(mongo_connection));
-  if (*field == NULL) {
-    return NGX_CONF_ERROR;
-  }
-
-  value = cf->args->elts;
-
-  if (value[1].len == 0) {
-    *field = NGX_CONF_UNSET_PTR;
-    return NGX_OK;
-  }
-  
-  port = (char*)(value[1].data);
-  while ((*port) != ':') {
-    *current = *port;
-    current++;
+    mongo_connection **field;
+    mongo_connection_options options;
+    char *p = conf; 
+    ngx_str_t *value; 
+    ngx_conf_post_t  *post;
+    char ip[16];
+    char* current = ip;
+    char* port;
+    
+    field = (mongo_connection **) (p + cmd->offset);
+    
+    if (*field) {
+      return "is duplicate";
+    }
+    
+    *field = ngx_palloc(cf->pool, sizeof(mongo_connection));
+    if (*field == NULL) {
+      return NGX_CONF_ERROR;
+    }
+    
+    value = cf->args->elts;
+    
+    if (value[1].len == 0) {
+      *field = NGX_CONF_UNSET_PTR;
+      return NGX_OK;
+    }
+    
+    port = (char*)(value[1].data);
+    while ((*port) != ':') {
+      *current = *port;
+      current++;
+      port++;
+    }
+    *current='\0';
     port++;
-  }
-  *current='\0';
-  port++;
-  
-  strcpy(options.host, ip);
-  options.port = atoi(port);
-  if (mongo_connect( *field, &options ) != mongo_conn_success) {
-    /* TODO log what exception mongo is throwing */
-    ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "Mongo exception");
-    return NGX_CONF_ERROR;
-  } 
-
-  if (cmd->post) {
-    post = cmd->post;
-    return post->post_handler(cf, post, *field);
-  }
-
-  return NGX_CONF_OK;
+    
+    strcpy(options.host, ip);
+    options.port = atoi(port);
+    if (mongo_connect( *field, &options ) != mongo_conn_success) {
+      /* TODO log what exception mongo is throwing */
+      ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "Mongo exception");
+      return NGX_CONF_ERROR;
+    } 
+    
+    if (cmd->post) {
+      post = cmd->post;
+      return post->post_handler(cf, post, *field);
+    }
+    
+    return NGX_CONF_OK;
 }
 
 static char h_digit(char hex)
 {
-  return isdigit(hex) ? hex - '0': tolower(hex)-'a'+10;
+    return isdigit(hex) ? hex - '0': tolower(hex)-'a'+10;
 }
 
 static int htoi(char* h)
 {
-  char ok[] = "0123456789AaBbCcDdEeFf";
-  if (strchr(ok, h[0])==NULL || strchr(ok,h[1])==NULL 
-      || h[0]=='\0'|| h[1]=='\0')
-    return -1;
-  return h_digit(h[0])*16 + h_digit(h[1]);
+    char ok[] = "0123456789AaBbCcDdEeFf";
+    if (strchr(ok, h[0])==NULL || strchr(ok,h[1])==NULL 
+	|| h[0]=='\0'|| h[1]=='\0')
+      return -1;
+    return h_digit(h[0])*16 + h_digit(h[1]);
 }
 
 static int url_decode(char * filename)
 {
-  char * read = filename;
-  char * write = filename;
-  char hex[3];
-  int c;
-  
-  hex[2] = '\0';
-  while (*read != '\0'){
-    if (*read == '%') {
-      hex[0] = *(++read);
-      if (hex[0] == '\0') return 0;
-      hex[1] = *(++read);
-      if (hex[1] == '\0') return 0;
-      c = htoi(hex);
-      if (c == -1) return 0;
-      *write = (char)c;
+    char * read = filename;
+    char * write = filename;
+    char hex[3];
+    int c;
+    
+    hex[2] = '\0';
+    while (*read != '\0'){
+      if (*read == '%') {
+	hex[0] = *(++read);
+	if (hex[0] == '\0') return 0;
+	hex[1] = *(++read);
+	if (hex[1] == '\0') return 0;
+	c = htoi(hex);
+	if (c == -1) return 0;
+	*write = (char)c;
+      }
+      else *write = *read;
+      read++;
+      write++;
     }
-    else *write = *read;
-    read++;
-    write++;
-  }
-  *write = '\0';
-  return 1;
+    *write = '\0';
+    return 1;
 }
 
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
