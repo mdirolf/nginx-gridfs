@@ -38,6 +38,7 @@
  * TODO single persistent connection
  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <ngx_config.h>
@@ -53,10 +54,12 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* parent,
 
 static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
 
+static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
+
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
 
 typedef struct {
-    ngx_str_t mongod_host;
+    mongo_connection* conn;
     ngx_str_t gridfs_db;
     ngx_str_t gridfs_root_collection;
     ngx_flag_t enable;
@@ -77,9 +80,9 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
     {
         ngx_string("mongod_host"),
         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
-        ngx_conf_set_str_slot,
+        ngx_http_mongo_host,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_gridfs_loc_conf_t, mongod_host),
+        offsetof(ngx_http_gridfs_loc_conf_t, conn),
         NULL
     },
 
@@ -137,9 +140,10 @@ static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
     if (gridfs_conf == NULL) {
         return NGX_CONF_ERROR;
     }
-    /*    gridfs_conf->mongod_host = NGX_CONF_UNSET;
-    gridfs_conf->gridfs_db = NGX_CONF_UNSET;
-    gridfs_conf->gridfs_root_collection = NGX_CONF_UNSET;*/
+
+    gridfs_conf->conn = NGX_CONF_UNSET_PTR;
+    gridfs_conf->gridfs_db.data = NULL;
+    gridfs_conf->gridfs_root_collection.data = NULL;
     return gridfs_conf;
 }
 
@@ -148,23 +152,22 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_pa
     ngx_http_gridfs_loc_conf_t* child = void_child;
 
     /* TODO do we need to do more error checking here? */
-    ngx_conf_merge_str_value(child->mongod_host, parent->mongod_host, "127.0.0.1:27017");
-    ngx_conf_merge_str_value(child->gridfs_root_collection, parent->gridfs_root_collection, "fs");
-    ngx_conf_merge_value(child->enable, parent->enable, 0);
 
-    /* TODO requiring a gridfs_db setting - should we provide a default instead? */
-    /* ngx_conf_merge_str_value(child->gridfs_db, parent->gridfs_db, ngx_string("gridfs")); */
-    if (child->gridfs_db.data == NULL) {
-        if (parent->gridfs_db.data) {
-            child->gridfs_db.len = parent->gridfs_db.len;
-            child->gridfs_db.data = parent->gridfs_db.data;
-        } else if (child->enable) {
-            ngx_conf_log_error(NGX_LOG_EMERG, directive, 0,
-                               "Must provide a gridfs_db setting to use the GridFS module");
-            return NGX_CONF_ERROR;
-        } else { /* TODO what do we do here? */
-        }
+    ngx_conf_merge_ptr_value(child->conn, parent->conn, NULL);
+    if (child->conn == NULL){
+      child->conn = ngx_palloc(directive->pool, sizeof(mongo_connection));
+      if (child->conn == NULL) {
+	return NGX_CONF_ERROR;
+      }
+      if (mongo_connect(child->conn, NULL) != mongo_conn_success) {
+	/* TODO log what exception mongo is throwing */
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, "Mongo exception");
+	return NGX_CONF_ERROR;
+      }
     }
+    ngx_conf_merge_str_value(child->gridfs_root_collection, parent->gridfs_root_collection, "fs");
+    ngx_conf_merge_str_value(child->gridfs_db, parent->gridfs_db, "gridfs");
+    ngx_conf_merge_value(child->enable, parent->enable, 0);    
 
     return NGX_CONF_OK;
 }
@@ -181,8 +184,58 @@ static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void
     return NGX_CONF_OK;
 }
 
-#include <string.h>
-#include <stdlib.h>
+static char* ngx_http_mongo_host(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+  mongo_connection **field;
+  mongo_connection_options options;
+  char *p = conf; 
+  ngx_str_t *value; 
+  ngx_conf_post_t  *post;
+  char ip[16];
+  char* current = ip;
+  char* port;
+
+  field = (mongo_connection **) (p + cmd->offset);
+
+  if (*field) {
+    return "is duplicate";
+  }
+
+  *field = ngx_palloc(cf->pool, sizeof(mongo_connection));
+  if (*field == NULL) {
+    return NGX_CONF_ERROR;
+  }
+
+  value = cf->args->elts;
+
+  if (value[1].len == 0) {
+    *field = NGX_CONF_UNSET_PTR;
+    return NGX_OK;
+  }
+  
+  port = (char*)(value[1].data);
+  while ((*port) != ':') {
+    *current = *port;
+    current++;
+    port++;
+  }
+  *current='\0';
+  port++;
+  
+  strcpy(options.host, ip);
+  options.port = atoi(port);
+  if (mongo_connect( *field, &options ) != mongo_conn_success) {
+    /* TODO log what exception mongo is throwing */
+    ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "Mongo exception");
+    return NGX_CONF_ERROR;
+  } 
+
+  if (cmd->post) {
+    post = cmd->post;
+    return post->post_handler(cf, post, *field);
+  }
+
+  return NGX_CONF_OK;
+}
 
 static char h_digit(char hex)
 {
@@ -232,15 +285,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_str_t location_name;
     ngx_str_t full_uri;
     char* filename;
-    mongo_connection conn;
-    mongo_connection_options options;
     gridfs gfs_object;
     gridfs* gfs = &gfs_object;
     gridfile gfile_object;
     gridfile* gfile = &gfile_object;
-    char ip[16];
-    char* current  = ip;
-    char* port;
     gridfs_offset length;
     char* data;
     ngx_uint_t chunksize;
@@ -253,6 +301,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
 
+    /* Retrieve the filename */
     location_name = core_conf->name;
     full_uri = request->uri;
     /* defensive */
@@ -274,29 +323,9 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 		    "Malformed request");
       return NGX_HTTP_BAD_REQUEST;
     }
-
-    /* Split the host into ip and port */
-    port = (char*)gridfs_conf->mongod_host.data;
-    while ((*port) != ':') {
-      *current = *port;
-      current++;
-      port++;
-    }
-    *current='\0';
-    port++;
     
-    /* Attempt Connection to MongoDB */
-    strcpy(options.host, ip);
-    options.port = atoi(port);
-    if (mongo_connect( &conn, &options ) != mongo_conn_success) {
-      /* TODO log what exception mongo is throwing */
-      ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-		    "Mongo exception");
-      return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    } 
-    
-    /* Attempt finding GridFile of filename */
-    gridfs_init(&conn,
+    /* Find the GridFile of filename */
+    gridfs_init(gridfs_conf->conn,
 		(const char*)gridfs_conf->gridfs_db.data,
 		(const char*)gridfs_conf->gridfs_root_collection.data,
 		gfs);
@@ -311,7 +340,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     numchunks = gridfile_get_numchunks(gfile);
     contenttype = (char*)gridfile_get_contenttype(gfile);
 
-    /* Set headers */
+    /* Set the headers */
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = length;
     if (contenttype != NULL) {
@@ -349,8 +378,9 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
       out.buf = buffer;
       out.next = NULL;
 
-      /* Serve the Chunk TODO: More Codes to Catch? */
+      /* Serve the Chunk */
       rc = ngx_http_output_filter(request, &out);
+      /* TODO: More Codes to Catch? */
       if (rc == NGX_ERROR) {
 	return NGX_ERROR;
       }
