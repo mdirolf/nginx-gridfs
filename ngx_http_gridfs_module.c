@@ -147,10 +147,19 @@ static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
 
     gridfs_conf = ngx_pcalloc(directive->pool, sizeof(ngx_http_gridfs_loc_conf_t));
     if (gridfs_conf == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, directive, 0, 
+			   "Failed to allocate memory for GridFS Location Config.");
         return NGX_CONF_ERROR;
     }
 
-    gridfs_conf->gridfs_conn = NGX_CONF_UNSET_PTR;
+    gridfs_conf->gridfs_conn = ngx_pcalloc(directive->pool, sizeof(mongo_connection));
+    if (gridfs_conf->gridfs_conn == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, directive, 0, 
+			   "Failed to allocate memory for Mongo Connection.");
+	return NGX_CONF_ERROR;
+    }
+
+    gridfs_conf->gridfs_conn->connected = 0;
     gridfs_conf->gridfs_db.data = NULL;
     gridfs_conf->gridfs_root_collection.data = NULL;
     gridfs_conf->gridfs_field.data = NULL;
@@ -162,36 +171,28 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_pa
     ngx_http_gridfs_loc_conf_t* parent = void_parent;
     ngx_http_gridfs_loc_conf_t* child = void_child;
 
-    /* TODO do we need to do more error checking here? */
-    
-    ngx_conf_merge_str_value(child->gridfs_db, parent->gridfs_db, 
-			     "test");    
-    ngx_conf_merge_str_value(child->gridfs_root_collection, 
+    ngx_conf_merge_str_value(child->gridfs_db, parent->gridfs_db, "gridfs");    
+    ngx_conf_merge_str_value(child->gridfs_root_collection,
 			     parent->gridfs_root_collection, "fs");
-    ngx_conf_merge_str_value(child->gridfs_field, parent->gridfs_field, 
-			     "_id");
-    ngx_conf_merge_uint_value(child->gridfs_type, parent->gridfs_type, 
-			     bson_oid);
-    ngx_conf_merge_ptr_value(child->gridfs_conn, parent->gridfs_conn, NULL);
-    if (child->gridfs_conn == NULL){
-      child->gridfs_conn = ngx_palloc(directive->pool, sizeof(mongo_connection));
-      if (child->gridfs_conn == NULL) {
-	return NGX_CONF_ERROR;
-      }
-      if (mongo_connect(child->gridfs_conn, NULL) != mongo_conn_success) {
-	/* TODO log what exception mongo is throwing */
-	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, "Mongo exception");
-	return NGX_CONF_ERROR;
-      }
-    }
+    ngx_conf_merge_str_value(child->gridfs_field, parent->gridfs_field, "_id");
+    ngx_conf_merge_uint_value(child->gridfs_type, parent->gridfs_type, bson_oid);
+    ngx_conf_merge_ptr_value(child->gridfs_conn, parent->gridfs_conn, NGX_CONF_UNSET_PTR);
 
-    /* Currently only support for "_id" and string filenames */ 
-    if ((ngx_strcmp(child->gridfs_field.data, "filename") == 0 
-	 && child->gridfs_type != bson_string)
-	|| (ngx_strcmp(child->gridfs_field.data, "filename") != 0 
-	    && ngx_strcmp(child->gridfs_field.data, "_id") != 0)) {
+    /* Currently only support for "_id" and "filename" */ 
+    if (child->gridfs_field.data != NULL
+	&& ngx_strcmp(child->gridfs_field.data, "filename") != 0 
+	&& ngx_strcmp(child->gridfs_field.data, "_id") != 0) {
+      ngx_conf_log_error(NGX_LOG_EMERG, directive, 0, 
+			 "Unsupported Field: %s", child->gridfs_field.data);
       return NGX_CONF_ERROR;
     }
+    if (child->gridfs_field.data != NULL 
+	&& ngx_strcmp(child->gridfs_field.data, "filename") == 0 
+	&& child->gridfs_type != bson_string) {
+      ngx_conf_log_error(NGX_LOG_EMERG, directive, 0, 
+			 "Field: filename, must be of Type: string");
+      return NGX_CONF_ERROR;
+    } 
 
     return NGX_CONF_OK;
 }
@@ -215,40 +216,38 @@ static char* ngx_http_gridfs_type(ngx_conf_t* directive, ngx_command_t* command,
     if (value[1].len == 0) {
       gridfs_conf->gridfs_type = NGX_CONF_UNSET_UINT;
     }
-    else if (ngx_strcmp(value[1].data, (u_char *)"objectid") == 0) {
+    else if (ngx_strcasecmp(value[1].data, (u_char *)"objectid") == 0) {
       gridfs_conf->gridfs_type = bson_oid;
     }
-    else if (ngx_strcmp(value[1].data, (u_char *)"string") == 0) {
+    else if (ngx_strcasecmp(value[1].data, (u_char *)"string") == 0) {
       gridfs_conf->gridfs_type = bson_string;
     }
-    else if (ngx_strcmp(value[1].data, (u_char *)"int") == 0) {
+    else if (ngx_strcasecmp(value[1].data, (u_char *)"int") == 0) {
       gridfs_conf->gridfs_type = bson_string;
     }
     else {
-      gridfs_conf->gridfs_type = NGX_CONF_UNSET_UINT;
+      /* Currently only support for "objectid", "string", and "int" */ 
+      ngx_conf_log_error(NGX_LOG_EMERG, directive, 0, 
+			 "Unsupported Type: %s", (char *)value[1].data);
+      return NGX_CONF_ERROR;
     }
     
     return NGX_CONF_OK;
 }
 
-static char* ngx_http_mongo_host(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* cmd, void* void_conf) {
     mongo_connection_options options;
-    ngx_http_gridfs_loc_conf_t* gridfs_conf = conf; 
+    ngx_http_gridfs_loc_conf_t* gridfs_conf = void_conf; 
     ngx_str_t *value; 
     char ip[16];
     char* current = ip;
     char* port;
     
-    if (gridfs_conf->gridfs_conn != NGX_CONF_UNSET_PTR) {
+    if (gridfs_conf->gridfs_conn->connected) {
       return "is duplicate";
     }
     
-    gridfs_conf->gridfs_conn = ngx_palloc(cf->pool, sizeof(mongo_connection));
-    if (gridfs_conf->gridfs_conn == NULL) {
-      return NGX_CONF_ERROR;
-    }
-    
-    value = cf->args->elts;
+    value = directive->args->elts;
     
     if (value[1].len == 0) {
       gridfs_conf->gridfs_conn = NGX_CONF_UNSET_PTR;
@@ -266,11 +265,31 @@ static char* ngx_http_mongo_host(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     
     strcpy(options.host, ip);
     options.port = atoi(port);
-    if (mongo_connect( gridfs_conf->gridfs_conn, &options ) != mongo_conn_success) {
-      /* TODO log what exception mongo is throwing */
-      ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "Mongo exception");
-      return NGX_CONF_ERROR;
-    } 
+    
+    switch (mongo_connect( gridfs_conf->gridfs_conn, &options )) {
+      case mongo_conn_success:
+	break;
+      case mongo_conn_bad_arg:
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, 
+		    "Mongo Exception: Bad Arguments");
+	return NGX_CONF_ERROR;
+      case mongo_conn_no_socket:
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, 
+		      "Mongo Exception: No Socket");
+	return NGX_CONF_ERROR;
+      case mongo_conn_fail:
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, 
+		      "Mongo Exception: Connection Failure");
+	return NGX_CONF_ERROR;
+      case mongo_conn_not_master: 
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, 
+		      "Mongo Exception: Not Master");
+	return NGX_CONF_ERROR;
+      default:
+	ngx_conf_log_error(NGX_LOG_ERR, directive, 0, 
+		      "Mongo Exception: Unknown Error");
+	return NGX_CONF_ERROR;
+    }
     
     return NGX_CONF_OK;
 }
@@ -322,10 +341,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_str_t location_name;
     ngx_str_t full_uri;
     char* value;
-    gridfs gfs_object;
-    gridfs* gfs = &gfs_object;
-    gridfile gfile_object;
-    gridfile* gfile = &gfile_object;
+    gridfs gfs;
+    gridfile gfile;
     gridfs_offset length;
     char* data;
     ngx_uint_t chunksize;
@@ -347,7 +364,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     /* defensive */
     if (full_uri.len < location_name.len) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Invalid location name or uri");
+                      "Invalid location name or uri.");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
     
@@ -355,7 +372,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     value = (char*)malloc(sizeof(char) * (full_uri.len - location_name.len + 1));
     if (value == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Failed to allocate value buffer");
+                      "Failed to allocate memory for value buffer.");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
     memcpy(value, full_uri.data + location_name.len, full_uri.len - location_name.len);
@@ -364,16 +381,45 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     /* URL Decoding */
     if (!url_decode(value)) {
       ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-		    "Malformed request");
+		    "Malformed request.");
       free(value);
       return NGX_HTTP_BAD_REQUEST;
     }
-      
+    
+    /* If no mongo connection, create a default connection */
+    /* TODO: Find a better place for this logic */
+    if (!gridfs_conf->gridfs_conn->connected) {      
+      switch (mongo_connect(gridfs_conf->gridfs_conn, NULL)) { 
+        case mongo_conn_success:
+	  break;
+	case mongo_conn_bad_arg:
+	  ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, 
+			"Mongo Exception: Bad Arguments");
+	  return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	case mongo_conn_no_socket:
+	  ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, 
+			"Mongo Exception: No Socket");
+	  return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	case mongo_conn_fail:
+	  ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, 
+			"Mongo Exception: Connection Failure");
+	  return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	case mongo_conn_not_master: 
+	  ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, 
+			"Mongo Exception: Not Master");
+	  return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	default:
+	  ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, 
+			"Mongo Exception: Unknown Error");
+	  return NGX_HTTP_INTERNAL_SERVER_ERROR;
+      }
+    }
+  
     /* Find the GridFile */
     gridfs_init(gridfs_conf->gridfs_conn,
 		(const char*)gridfs_conf->gridfs_db.data,
 		(const char*)gridfs_conf->gridfs_root_collection.data,
-		gfs);
+		&gfs);
     bson_buffer_init(&buf);
     switch (gridfs_conf->gridfs_type) {
     case  bson_oid:
@@ -387,9 +433,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
       bson_append_string(&buf, (char*)gridfs_conf->gridfs_field.data, value);
       break;
     }
-
-    bson_from_buffer(&query, &buf) ;
-    if(!gridfs_find_query(gfs, &query, gfile)){
+    bson_from_buffer(&query, &buf);
+    if(!gridfs_find_query(&gfs, &query, &gfile)){
       bson_destroy(&query);
       free(value);
       return NGX_HTTP_NOT_FOUND;
@@ -398,10 +443,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     free(value);
 
     /* Get information about the file */
-    length = gridfile_get_contentlength(gfile);
-    chunksize = gridfile_get_chunksize(gfile);
-    numchunks = gridfile_get_numchunks(gfile);
-    contenttype = (char*)gridfile_get_contenttype(gfile);
+    length = gridfile_get_contentlength(&gfile);
+    chunksize = gridfile_get_chunksize(&gfile);
+    numchunks = gridfile_get_numchunks(&gfile);
+    contenttype = (char*)gridfile_get_contenttype(&gfile);
 
     /* Set the headers */
     request->headers_out.status = NGX_HTTP_OK;
@@ -433,7 +478,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
       }
       
       /* Set up the buffer chain */
-      chunklength = gridfile_read(gfile, chunksize, data);
+      chunklength = gridfile_read(&gfile, chunksize, data);
       buffer->pos = (u_char*)data;
       buffer->last = (u_char*)data + chunklength;
       buffer->memory = 1;
