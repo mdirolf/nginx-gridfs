@@ -1,6 +1,9 @@
 nginx-gridfs
 ============
-:Author: Mike Dirolf <mike@dirolf.com>
+:Authors:
+    Mike Dirolf <mike@dirolf.com>,
+    Chris Triolo,
+    and everyone listed in the Credits section below
 
 About
 =====
@@ -68,7 +71,6 @@ Credits
 * Sho Fukamachi (sho) - towards compatibility with newer boost versions
 * Olivier Bregeras (stunti) - better handling of binary content
 * Chris Heald (cheald) - better handling of binary content
-* Chris Triolo (ctriolo) - easier build process
 
 License
 =======
