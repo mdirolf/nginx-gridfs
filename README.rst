@@ -13,8 +13,12 @@ content directly from `MongoDB <http://www.mongodb.org/>`_'s `GridFS
 
 Dependencies
 ============
-**nginx-gridfs** requires the Mongo-C-Driver which is a submodule
-to this repository.
+**nginx-gridfs** requires the Mongo-C-Driver which is a submodule to
+this repository. To check out the submodule (after cloning this
+repository), run:
+
+    $ git submodule init
+    $ git submodule update
 
 Installation
 ============
@@ -22,6 +26,7 @@ Installing Nginx modules requires rebuilding Nginx from source:
 
 * Grab the `Nginx source <http://nginx.net/>`_ and unpack it.
 * Clone this repository somewhere on your machine.
+* Check out the required submodule, as described above.
 * Change to the directory containing the Nginx source.
 * Now build::
 
@@ -34,7 +39,6 @@ Configuration
 Here is the relevant section of an *nginx.conf*::
 
   location /gridfs/ {
-      gridfs;
       gridfs_db my_app;
 
       # these are the default values:
@@ -44,14 +48,13 @@ Here is the relevant section of an *nginx.conf*::
       gridfs_type objectid; # Supported {objectid, string, int}
   }
 
-The only required configuration variables are **gridfs** to enable the
-module for this location and **gridfs_db** to specify the database in
-which to store files. **mongod_host** and **gridfs_root_collection**
-can be specified but default to the values given in the configuration
-above.
+The only required configuration variables is **gridfs_db** to enable
+the module for a location and to specify the database in which to
+store files. **mongod_host** and **gridfs_root_collection** can be
+specified but default to the values given in the configuration above.
 
-This will set up Nginx to serve the file in gridfs with filename *foo*
-for any request to */gridfs/foo*
+This will set up Nginx to serve the file in gridfs with _id *ObjectId("a12...")*
+for any request to */gridfs/a12...*
 
 Known Issues / TODO / Things You Should Hack On
 ===============================================
@@ -60,10 +63,7 @@ Known Issues / TODO / Things You Should Hack On
 * Use mimetype stored in GridFS file (also maybe fall back to guessing
   by extension?)
 * HTTP range support for partial downloads
-* Use a single persistent connection
-* URL decode filenames
 * Better error handling / logging
-* Support for getting files by _id (in case there are duplicate filenames)
 
 Credits
 =======
