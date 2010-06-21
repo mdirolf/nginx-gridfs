@@ -37,7 +37,6 @@
  * TODO range support http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
  */
 
-#include <stdlib.h>
 #include <ctype.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -263,7 +262,7 @@ static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* cmd, void
     port++;
 
     strcpy(options.host, ip);
-    options.port = atoi(port);
+    options.port = ngx_atoi((u_char*)port, ngx_strlen(port));
 
     switch (mongo_connect( gridfs_conf->gridfs_conn, &options )) {
     case mongo_conn_success:
@@ -426,7 +425,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         bson_append_oid(&buf, (char*)gridfs_conf->gridfs_field.data, &oid);
         break;
     case bson_int:
-        bson_append_int(&buf, (char*)gridfs_conf->gridfs_field.data, atoi(value));
+      bson_append_int(&buf, (char*)gridfs_conf->gridfs_field.data, ngx_atoi((u_char*)value, strlen(value)));
         break;
     case bson_string:
         bson_append_string(&buf, (char*)gridfs_conf->gridfs_field.data, value);
