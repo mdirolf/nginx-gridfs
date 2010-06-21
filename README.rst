@@ -60,8 +60,6 @@ Known Issues / TODO / Things You Should Hack On
 ===============================================
 
 * Some issues with large files
-* Use mimetype stored in GridFS file (also maybe fall back to guessing
-  by extension?)
 * HTTP range support for partial downloads
 * Better error handling / logging
 
