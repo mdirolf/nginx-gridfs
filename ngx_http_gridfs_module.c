@@ -37,7 +37,6 @@
  * TODO range support http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
  */
 
-#include <ctype.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -294,7 +293,7 @@ static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* cmd, void
 
 static char h_digit(char hex)
 {
-    return isdigit(hex) ? hex - '0': ngx_tolower(hex)-'a'+10;
+    return (hex >= '0' && hex <= '9') ? hex - '0': ngx_tolower(hex)-'a'+10;
 }
 
 static int htoi(char* h)
