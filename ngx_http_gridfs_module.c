@@ -38,7 +38,6 @@
  */
 
 #include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -296,14 +295,14 @@ static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* cmd, void
 
 static char h_digit(char hex)
 {
-    return isdigit(hex) ? hex - '0': tolower(hex)-'a'+10;
+    return isdigit(hex) ? hex - '0': ngx_tolower(hex)-'a'+10;
 }
 
 static int htoi(char* h)
 {
     char ok[] = "0123456789AaBbCcDdEeFf";
 
-    if (strchr(ok, h[0]) == NULL || strchr(ok,h[1]) == NULL) { return -1; }
+    if (ngx_strchr(ok, h[0]) == NULL || ngx_strchr(ok,h[1]) == NULL) { return -1; }
     return h_digit(h[0])*16 + h_digit(h[1]);
 }
 
