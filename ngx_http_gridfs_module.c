@@ -455,6 +455,24 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     else ngx_http_set_content_type(request);
     ngx_http_send_header(request);
 
+    if (numchunks == 0) {
+        /* Allocate space for the response buffer */
+        buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
+        if (buffer == NULL) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Failed to allocate response buffer");
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+	
+	buffer->pos = NULL;
+	buffer->last = NULL;
+	buffer->memory = 1;
+	buffer->last_buf = 1;
+	out.buf = buffer;
+	out.next = NULL;
+	return ngx_http_output_filter(request, &out);
+    }
+
     /* Read and serve chunk by chunk */
     for (i = 0; i < numchunks; i++) {
 
