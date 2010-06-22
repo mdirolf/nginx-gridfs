@@ -53,10 +53,14 @@ static char* ngx_http_gridfs_type(ngx_conf_t* directive, ngx_command_t* command,
 
 static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
 
+static char* ngx_http_mongo_pass(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
+
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
 
 typedef struct {
     mongo_connection* gridfs_conn;
+    ngx_str_t mongod_user;
+    ngx_str_t mongod_pass;
     ngx_str_t gridfs_db;
     ngx_str_t gridfs_field;
     ngx_uint_t gridfs_type;
@@ -98,6 +102,24 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
         ngx_http_mongo_host,
         NGX_HTTP_LOC_CONF_OFFSET,
         offsetof(ngx_http_gridfs_loc_conf_t, gridfs_conn),
+        NULL
+    },
+
+    {
+        ngx_string("mongod_user"),
+        NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+        ngx_conf_set_str_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_gridfs_loc_conf_t, mongod_user),
+        NULL
+    },
+
+    {
+        ngx_string("mongod_pass"),
+        NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+        ngx_http_mongo_pass,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_gridfs_loc_conf_t, mongod_pass),
         NULL
     },
 
@@ -159,6 +181,8 @@ static void* ngx_http_gridfs_create_loc_conf(ngx_conf_t* directive) {
     gridfs_conf->gridfs_conn->connected = 0;
     gridfs_conf->gridfs_db.data = NULL;
     gridfs_conf->gridfs_root_collection.data = NULL;
+    gridfs_conf->mongod_user.data = NULL;
+    gridfs_conf->mongod_pass.data = NULL;
     gridfs_conf->gridfs_field.data = NULL;
     gridfs_conf->gridfs_type = NGX_CONF_UNSET_UINT;
     return gridfs_conf;
@@ -287,9 +311,26 @@ static char* ngx_http_mongo_host(ngx_conf_t* directive, ngx_command_t* cmd, void
                            "Mongo Exception: Unknown Error");
         return NGX_CONF_ERROR;
     }
-
+    
     return NGX_CONF_OK;
 }
+
+static char* ngx_http_mongo_pass(ngx_conf_t* directive, ngx_command_t* command, void* void_conf) {
+    ngx_http_gridfs_loc_conf_t* gridfs_conf = void_conf;
+    ngx_str_t *value;
+    
+    value = directive->args->elts;
+    
+    if (mongo_cmd_authenticate(gridfs_conf->gridfs_conn, (const char*)gridfs_conf->gridfs_db.data, (const char*)gridfs_conf->mongod_user.data, (const char*)value[1].data) != 1) {
+      ngx_conf_log_error(NGX_LOG_ERR, directive, 0,
+                         "Invalid mongo user/pass: %s / %s", gridfs_conf->mongod_user.data, value[1].data);
+       return NGX_CONF_ERROR;
+    }
+    
+
+    return ngx_conf_set_str_slot(directive, command, void_conf);
+}
+
 
 static char h_digit(char hex)
 {

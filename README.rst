@@ -43,6 +43,8 @@ Here is the relevant section of an *nginx.conf*::
 
       # these are the default values:
       mongod_host 127.0.0.1:27017;
+      mongod_user user;
+      mongod_pass pass;
       gridfs_root_collection fs;
       gridfs_field _id; # Supported {_id, filename} 
       gridfs_type objectid; # Supported {objectid, string, int}
