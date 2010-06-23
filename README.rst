@@ -43,7 +43,7 @@ Here is the relevant section of an *nginx.conf*::
 
       # these are the default values:
       mongod_host 127.0.0.1:27017;
-      mongod_user user;
+      mongod_user user; 
       mongod_pass pass;
       gridfs_root_collection fs;
       gridfs_field _id; # Supported {_id, filename} 
@@ -71,6 +71,7 @@ Credits
 * Sho Fukamachi (sho) - towards compatibility with newer boost versions
 * Olivier Bregeras (stunti) - better handling of binary content
 * Chris Heald (cheald) - better handling of binary content
+* Paul Dlug (pdlug) - mongo authentication
 
 License
 =======
