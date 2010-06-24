@@ -215,12 +215,6 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* directive, void* void_pa
 
     /* Connect to mongo once the directives are aquired */
     if (child->gridfs_db.data != NULL 
-	&& (child->mongod_conn != NULL) && child->mongod_conn->connected
-	&& (ngx_strcmp(child->mongod_host.data, child->mongod_conn->left_opts->host)!=0
-	    || child->mongod_port != child->mongod_conn->left_opts->port)) {
-      mongo_destroy(child->mongod_conn);
-    }
-    if (child->gridfs_db.data != NULL 
 	&& (child->mongod_conn != NULL) && !child->mongod_conn->connected) {
       if (ngx_http_gridfs_mongod_connect(directive, child) == NGX_ERROR) {
 	return NGX_CONF_ERROR;
