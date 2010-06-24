@@ -42,18 +42,24 @@ Here is the relevant section of an *nginx.conf*::
       gridfs_db my_app;
 
       # these are the default values:
-      mongod_host 127.0.0.1:27017;
-      mongod_user user; 
-      mongod_pass pass;
+      mongod_host 127.0.0.1;
+      mongod_port 27017;
       gridfs_root_collection fs;
       gridfs_field _id; # Supported {_id, filename} 
       gridfs_type objectid; # Supported {objectid, string, int}
+
+      # these are the authentication variables
+      mongod_user user; 
+      mongod_pass pass;
   }
 
 The only required configuration variables is **gridfs_db** to enable
 the module for a location and to specify the database in which to
-store files. **mongod_host** and **gridfs_root_collection** can be
-specified but default to the values given in the configuration above.
+store files. **mongod_host**, **mongo_port**, **gridfs_root_collection**,
+**gridfs_field**, and **gridfs_type** can be specified but default to 
+the values given in the configuration above. **mongod_user** and 
+**mongod_pass** should be specified only if the database requires
+authentication.
 
 This will set up Nginx to serve the file in gridfs with _id *ObjectId("a12...")*
 for any request to */gridfs/a12...*
