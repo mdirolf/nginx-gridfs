@@ -401,16 +401,19 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     gridfs gfs;
     gridfile gfile;
     gridfs_offset length;
-    char* data;
     ngx_uint_t chunksize;
     ngx_uint_t numchunks;
-    ngx_uint_t chunklength;
     char* contenttype;
     ngx_uint_t i;
     ngx_int_t rc = NGX_OK;
     bson query;
     bson_buffer buf;
     bson_oid_t oid;
+    mongo_cursor ** cursors;
+    gridfs_offset chunk_len;
+    const char * chunk_data;
+    bson_iterator it;
+    bson chunk;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
@@ -503,6 +506,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 	out.next = NULL;
 	return ngx_http_output_filter(request, &out);
     }
+    
+    cursors = (mongo_cursor **)calloc(sizeof(mongo_cursor *), numchunks);
 
     /* Read and serve chunk by chunk */
     for (i = 0; i < numchunks; i++) {
@@ -515,18 +520,17 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
-        /* Allocate space for the buffer of data */
-        data = ngx_pcalloc(request->pool, sizeof(char)*chunksize);
-        if (data == NULL) {
-            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                          "Failed to allocate buffer for data");
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
+	/* Fetch the chunk from mongo */
+	cursors[i] = gridfile_get_chunks(&gfile, i, 1);
+	mongo_cursor_next(cursors[i]);
+	chunk = cursors[i]->current;
+	bson_find(&it, &chunk, "data");
+	chunk_len = bson_iterator_bin_len( &it );
+	chunk_data = bson_iterator_bin_data( &it );
 
         /* Set up the buffer chain */
-        chunklength = gridfile_read(&gfile, chunksize, data);
-        buffer->pos = (u_char*)data;
-        buffer->last = (u_char*)data + chunklength;
+        buffer->pos = (u_char*)chunk_data;
+        buffer->last = (u_char*)chunk_data + chunk_len;
         buffer->memory = 1;
         buffer->last_buf = (i == numchunks-1);
         out.buf = buffer;
@@ -534,10 +538,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
         /* Serve the Chunk */
         rc = ngx_http_output_filter(request, &out);
+
         /* TODO: More Codes to Catch? */
         if (rc == NGX_ERROR) {
             return NGX_ERROR;
         }
     }
+
+    /* Unfortunately, cursor can not be destroyed directly 
+     * after a output filter call, as it is not known if the 
+     * data has been sent yet. */
+    /* TODO: Find a better way to do this */
+    for (i = 0; i < numchunks; i++) {
+      mongo_cursor_destroy(cursors[i]);
+    }
+    free(cursors);
+
     return rc;
 }
