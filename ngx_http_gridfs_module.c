@@ -53,6 +53,8 @@ static char* ngx_http_gridfs_type(ngx_conf_t* directive, ngx_command_t* command,
 
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request);
 
+static void ngx_http_gridfs_cleanup(void* data);
+
 typedef struct {
     ngx_str_t gridfs_db;
     ngx_str_t gridfs_root_collection;
@@ -64,6 +66,11 @@ typedef struct {
     ngx_str_t mongod_pass;
     mongo_connection* mongod_conn;
 } ngx_http_gridfs_loc_conf_t;
+
+typedef struct {
+    mongo_cursor ** cursors;
+    ngx_uint_t numchunks;
+} ngx_http_gridfs_cleanup_t;
 
 static ngx_int_t ngx_http_gridfs_mongod_connect(ngx_conf_t* directive, ngx_http_gridfs_loc_conf_t* gridfs_conf);
 
@@ -414,12 +421,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     const char * chunk_data;
     bson_iterator it;
     bson chunk;
+    ngx_pool_cleanup_t* gridfs_cln;
+    ngx_http_gridfs_cleanup_t* gridfs_clndata;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
 
     location_name = core_conf->name;
     full_uri = request->uri;
+
+    gridfs_cln = ngx_pool_cleanup_add(request->pool, sizeof(ngx_http_gridfs_cleanup_t));
+    if (gridfs_cln == NULL) {
+      return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    gridfs_cln->handler = ngx_http_gridfs_cleanup;
+    gridfs_clndata = gridfs_cln->data;
 
     /* defensive */
     if (full_uri.len < location_name.len) {
@@ -507,7 +523,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 	return ngx_http_output_filter(request, &out);
     }
     
-    cursors = (mongo_cursor **)calloc(sizeof(mongo_cursor *), numchunks);
+    cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
 
     /* Read and serve chunk by chunk */
     for (i = 0; i < numchunks; i++) {
@@ -545,14 +561,19 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
     }
 
-    /* Unfortunately, cursor can not be destroyed directly 
-     * after a output filter call, as it is not known if the 
-     * data has been sent yet. */
-    /* TODO: Find a better way to do this */
-    for (i = 0; i < numchunks; i++) {
-      mongo_cursor_destroy(cursors[i]);
-    }
-    free(cursors);
+    gridfs_clndata->cursors = cursors;
+    gridfs_clndata->numchunks = numchunks;
 
     return rc;
+}
+
+static void ngx_http_gridfs_cleanup(void* data) {
+    ngx_http_gridfs_cleanup_t* gridfs_clndata;
+    ngx_uint_t i;
+
+    gridfs_clndata = data;
+
+    for (i = 0; i < gridfs_clndata->numchunks; i++) {
+        mongo_cursor_destroy(gridfs_clndata->cursors[i]);
+    }
 }
