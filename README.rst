@@ -36,33 +36,66 @@ Installing Nginx modules requires rebuilding Nginx from source:
 
 Configuration
 =============
-Here is the relevant section of an *nginx.conf*::
+
+**gridfs**
+
+  :syntax: *gridfs DB_NAME [root_collection=ROOT] [field=QUERY_FIELD] [type=QUERY_TYPE] [user=USERNAME] [pass=PASSWORD]* 
+  :default: *NONE*
+  :context: location
+
+  This directive enables the **nginx-gridfs** module at a given location. The 
+  only required parameter is DB_NAME to specify the database to serve files from. 
+
+  * *root_collection=* specify the root_collection(prefix) of the GridFS. default: *fs*
+  * *field=* specify the field to query. Supported fields include *_id* and *filename*. default: *_id*
+  * *type=* specify the type to query. Supported types include *objectid*, *string* and *int*. default: *objectid*
+  * *user=* specify a username if your mongo database requires authentication. default: *NULL*
+  * *pass=* specify a password if your mongo database requires authentication. default: *NULL*
+
+**mongo**
+
+  :syntax: *mongo MONGOD_HOST*
+  :default: *127.0.0.1:27017*
+  :context: location
+
+  This directive specifies a mongod to connect to. MONGOD_HOST should be in the
+  form of hostname:port. This directive is optional.
+
+Here is a sample configuration in the relevant section of an *nginx.conf*::
 
   location /gridfs/ {
-      gridfs_db my_app;
-
-      # these are the default values:
-      mongod_host 127.0.0.1;
-      mongod_port 27017;
-      gridfs_root_collection fs;
-      gridfs_field _id; # Supported {_id, filename} 
-      gridfs_type objectid; # Supported {objectid, string, int}
-
-      # these are the authentication variables
-      mongod_user user; 
-      mongod_pass pass;
+      gridfs my_app;
   }
-
-The only required configuration variables is **gridfs_db** to enable
-the module for a location and to specify the database in which to
-store files. **mongod_host**, **mongo_port**, **gridfs_root_collection**,
-**gridfs_field**, and **gridfs_type** can be specified but default to 
-the values given in the configuration above. **mongod_user** and 
-**mongod_pass** should be specified only if the database requires
-authentication.
 
 This will set up Nginx to serve the file in gridfs with _id *ObjectId("a12...")*
 for any request to */gridfs/a12...*
+
+Here is another configuration::
+
+  location /gridfs/ {
+      gridfs my_app field=filename type=string;
+      mongo 127.0.0.1:27017;
+  } 
+
+This will set up Nginx to serve the file in gridfs with filename *foo*
+for any request to */gridfs/foo*
+
+Here is another configuration::
+
+  location /gridfs/ {
+      gridfs my_app 
+             root_collection=pics 
+             field=_id 
+             type=int
+             user=foo 
+             pass=bar;
+      mongo 127.0.0.1:27017;
+  } 
+
+This will set up Nginx to communicate with the mongod at 127.0.0.1:27017 and 
+authenticate use of database *my_app* with username/password combo *foo/bar*.
+The gridfs root_collection is specified as *pics*. Nginx will then serve the 
+file in gridfs with _id *123...* for any request to */gridfs/123...*
 
 Known Issues / TODO / Things You Should Hack On
 ===============================================
