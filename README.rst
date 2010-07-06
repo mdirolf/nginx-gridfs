@@ -42,28 +42,27 @@ Directives
 
 **gridfs**
 
-  :syntax: *gridfs DB_NAME [root_collection=ROOT] [field=QUERY_FIELD] [type=QUERY_TYPE] [user=USERNAME] [pass=PASSWORD]* 
-  :default: *NONE*
-  :context: location
+:syntax: *gridfs DB_NAME [root_collection=ROOT] [field=QUERY_FIELD] [type=QUERY_TYPE] [user=USERNAME] [pass=PASSWORD]* 
+:default: *NONE*
+:context: location
 
-  This directive enables the **nginx-gridfs** module at a given location. The 
-  only required parameter is DB_NAME to specify the database to serve files from. 
+This directive enables the **nginx-gridfs** module at a given location. The 
+only required parameter is DB_NAME to specify the database to serve files from. 
 
-  * *root_collection=* specify the root_collection(prefix) of the GridFS. default: *fs*
-  * *field=* specify the field to query. Supported fields include *_id* and *filename*. default: *_id*
-  * *type=* specify the type to query. Supported types include *objectid*, *string* and *int*. default: *objectid*
-  * *user=* specify a username if your mongo database requires authentication. default: *NULL*
-  * *pass=* specify a password if your mongo database requires authentication. default: *NULL*
-
+* *root_collection=* specify the root_collection(prefix) of the GridFS. default: *fs*
+* *field=* specify the field to query. Supported fields include *_id* and *filename*. default: *_id*
+* *type=* specify the type to query. Supported types include *objectid*, *string* and *int*. default: *objectid*
+* *user=* specify a username if your mongo database requires authentication. default: *NULL*
+* *pass=* specify a password if your mongo database requires authentication. default: *NULL*
 
 **mongo**
 
-  :syntax: *mongo MONGOD_HOST*
-  :default: *127.0.0.1:27017*
-  :context: location
+:syntax: *mongo MONGOD_HOST*
+:default: *127.0.0.1:27017*
+:context: location
 
-  This directive specifies a mongod to connect to. MONGOD_HOST should be in the
-  form of hostname:port. This directive is optional.
+This directive specifies a mongod to connect to. MONGOD_HOST should be in the
+form of hostname:port. This directive is optional.
 
 Sample Configurations
 ---------------------
