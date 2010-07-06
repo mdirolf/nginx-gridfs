@@ -37,6 +37,9 @@ Installing Nginx modules requires rebuilding Nginx from source:
 Configuration
 =============
 
+Directives
+----------
+
 **gridfs**
 
   :syntax: *gridfs DB_NAME [root_collection=ROOT] [field=QUERY_FIELD] [type=QUERY_TYPE] [user=USERNAME] [pass=PASSWORD]* 
@@ -52,6 +55,7 @@ Configuration
   * *user=* specify a username if your mongo database requires authentication. default: *NULL*
   * *pass=* specify a password if your mongo database requires authentication. default: *NULL*
 
+
 **mongo**
 
   :syntax: *mongo MONGOD_HOST*
@@ -60,6 +64,9 @@ Configuration
 
   This directive specifies a mongod to connect to. MONGOD_HOST should be in the
   form of hostname:port. This directive is optional.
+
+Sample Configurations
+---------------------
 
 Here is a sample configuration in the relevant section of an *nginx.conf*::
 
