@@ -117,6 +117,7 @@ Credits
 * Olivier Bregeras (stunti) - better handling of binary content
 * Chris Heald (cheald) - better handling of binary content
 * Paul Dlug (pdlug) - mongo authentication
+* Todd Zusman (toddzinc) - gzip handling
 
 License
 =======
