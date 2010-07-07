@@ -651,6 +651,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         request->headers_out.content_type.data = (u_char*)contenttype;
     }
     else ngx_http_set_content_type(request);
+
+    /* Determine if content is gzipped, set headers accordingly */
+    if ( gridfile_get_boolean(&gfile,"gzipped") ) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0, gridfile_get_field(&gfile,"gzipped") );
+        request->headers_out.content_encoding = ngx_list_push(&request->headers_out.headers);
+        if (request->headers_out.content_encoding == NULL) {
+            return NGX_ERROR;
+        }
+        request->headers_out.content_encoding->hash = 1;
+        request->headers_out.content_encoding->key.len = sizeof("Content-Encoding") - 1;
+        request->headers_out.content_encoding->key.data = (u_char *) "Content-Encoding";
+        request->headers_out.content_encoding->value.len = sizeof("gzip") - 1;
+        request->headers_out.content_encoding->value.data = (u_char *) "gzip";
+    }
+
     ngx_http_send_header(request);
 
     /* Empty file */
