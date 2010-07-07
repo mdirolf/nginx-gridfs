@@ -562,7 +562,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_uint_t chunksize;
     ngx_uint_t numchunks;
     char* contenttype;
-    ngx_uint_t i;
+    volatile ngx_uint_t i;
     ngx_int_t rc = NGX_OK;
     bson query;
     bson_buffer buf;
@@ -611,10 +611,18 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     if (mongo_conn == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    gridfs_init(&mongo_conn->conn,
-                (const char*)gridfs_conf->db.data,
-                (const char*)gridfs_conf->root_collection.data,
-                &gfs);
+
+    MONGO_TRY_GENERIC(&mongo_conn->conn){  
+        gridfs_init(&mongo_conn->conn,
+                    (const char*)gridfs_conf->db.data,
+                    (const char*)gridfs_conf->root_collection.data,
+                    &gfs);
+    } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Mongo connection dropped");
+        return NGX_HTTP_SERVICE_UNAVAILABLE;
+    }
+
     bson_buffer_init(&buf);
     switch (gridfs_conf->type) {
     case  bson_oid:
@@ -629,13 +637,25 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         break;
     }
     bson_from_buffer(&query, &buf);
-    if(!gridfs_find_query(&gfs, &query, &gfile)){
+
+    int found = 0;
+
+    MONGO_TRY_GENERIC(&mongo_conn->conn){  
+        found = gridfs_find_query(&gfs, &query, &gfile);
+    } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                      "Mongo connection dropped");
         bson_destroy(&query);
         free(value);
-        return NGX_HTTP_NOT_FOUND;
+        return NGX_HTTP_SERVICE_UNAVAILABLE;
     }
+
     bson_destroy(&query);
     free(value);
+
+    if(!found){
+        return NGX_HTTP_NOT_FOUND;
+    }
 
     /* Get information about the file */
     length = gridfile_get_contentlength(&gfile);
@@ -714,8 +734,14 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
 
 	/* Fetch the chunk from mongo */
-	cursors[i] = gridfile_get_chunks(&gfile, i, 1);
-	mongo_cursor_next(cursors[i]);
+        MONGO_TRY_GENERIC(&mongo_conn->conn) {
+            cursors[i] = gridfile_get_chunks(&gfile, i, 1);
+	} MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Mongo connection dropped");
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
+        mongo_cursor_next(cursors[i]);
 	chunk = cursors[i]->current;
 	bson_find(&it, &chunk, "data");
 	chunk_len = bson_iterator_bin_len( &it );
