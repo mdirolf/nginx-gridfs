@@ -71,8 +71,15 @@ typedef struct {
 } ngx_http_gridfs_loc_conf_t;
 
 typedef struct {
+    ngx_str_t db;
+    ngx_str_t user;
+    ngx_str_t pass;
+} ngx_http_mongo_auth_t;
+
+typedef struct {
     ngx_str_t name;
     mongo_connection conn;
+    ngx_array_t *auths; /* ngx_http_mongo_auth_t */
 } ngx_http_mongo_connection_t;
 
 typedef struct {
@@ -385,6 +392,7 @@ ngx_http_mongo_connection_t* ngx_http_get_mongo_connection(ngx_log_t *log, ngx_s
 
 static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc_conf_t *gridfs_loc_conf) {
     ngx_http_mongo_connection_t* mongo_conn;
+    ngx_http_mongo_auth_t *mongo_auth;
     bson empty;
     char *test;
     int error;
@@ -403,6 +411,11 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
                           gridfs_loc_conf->pass.data);
             return NGX_ERROR;
         }
+
+        mongo_auth = ngx_array_push(mongo_conn->auths);
+        mongo_auth->db = gridfs_loc_conf->db;
+        mongo_auth->user = gridfs_loc_conf->user;
+        mongo_auth->pass = gridfs_loc_conf->pass;
     }
     
     // Run a test command to test authentication.
@@ -421,7 +434,7 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_mongo_add_connection(ngx_log_t* log, ngx_http_gridfs_loc_conf_t* gridfs_loc_conf) {
+static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_gridfs_loc_conf_t* gridfs_loc_conf) {
     ngx_http_mongo_connection_t* mongo_conn;
     mongo_connection_options left, right;
     mongo_conn_return status;
@@ -429,7 +442,7 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_log_t* log, ngx_http_gridfs_l
 
     mongods = gridfs_loc_conf->mongods->elts;
 
-    mongo_conn = ngx_http_get_mongo_connection(log, gridfs_loc_conf->mongo);
+    mongo_conn = ngx_http_get_mongo_connection(cycle->log, gridfs_loc_conf->mongo);
     if (mongo_conn != NULL) {
         return NGX_OK; 
     }
@@ -440,6 +453,7 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_log_t* log, ngx_http_gridfs_l
     }
 
     mongo_conn->name = gridfs_loc_conf->mongo;
+    mongo_conn->auths = ngx_array_create(cycle->pool, 4, sizeof(ngx_http_mongo_auth_t));
 
     if ( gridfs_loc_conf->mongods->nelts == 1 ) {
         ngx_cpystrn( (u_char*)left.host, 
@@ -465,24 +479,24 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_log_t* log, ngx_http_gridfs_l
         case mongo_conn_success:
             break;
         case mongo_conn_bad_arg:
-	    ngx_log_error(NGX_LOG_ERR, log, 0,
+	    ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Bad Arguments");
             return NGX_ERROR;
         case mongo_conn_no_socket:
-            ngx_log_error(NGX_LOG_ERR, log, 0,
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: No Socket");
             return NGX_ERROR;
         case mongo_conn_fail:
-            ngx_log_error(NGX_LOG_ERR, log, 0,
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Connection Failure %s:%i;",
                           left.host, left.port);
             return NGX_ERROR;
         case mongo_conn_not_master:
-            ngx_log_error(NGX_LOG_ERR, log, 0,
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Not Master");
             return NGX_ERROR;
         default:
-            ngx_log_error(NGX_LOG_ERR, log, 0,
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Unknown Error");
             return NGX_ERROR;
     }
@@ -500,7 +514,7 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
     ngx_array_init(&ngx_http_mongo_connections, cycle->pool, 4, sizeof(ngx_http_mongo_connection_t));
 
     for (i = 0; i < gridfs_main_conf->loc_confs.nelts; i++) {
-        if (ngx_http_mongo_add_connection(cycle->log, gridfs_loc_confs[i]) == NGX_ERROR) {
+        if (ngx_http_mongo_add_connection(cycle, gridfs_loc_confs[i]) == NGX_ERROR) {
             return NGX_ERROR;
         }
         if (ngx_http_mongo_authenticate(cycle->log, gridfs_loc_confs[i]) == NGX_ERROR) {
@@ -508,6 +522,62 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
         }
     }
 
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
+    mongo_conn_return status;
+
+    mongo_disconnect(&mongo_conn->conn);
+    status = mongo_reconnect(&mongo_conn->conn);
+
+    switch (status) {
+        case mongo_conn_success:
+            break;
+        case mongo_conn_bad_arg:
+	    ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Mongo Exception: Bad Arguments");
+            return NGX_ERROR;
+        case mongo_conn_no_socket:
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Mongo Exception: No Socket");
+            return NGX_ERROR;
+        case mongo_conn_fail:
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Mongo Exception: Connection Failure %s:%i;",
+                          mongo_conn->conn.left_opts->host, 
+                          mongo_conn->conn.left_opts->port);
+            return NGX_ERROR;
+        case mongo_conn_not_master:
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Mongo Exception: Not Master");
+            return NGX_ERROR;
+        default:
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Mongo Exception: Unknown Error");
+            return NGX_ERROR;
+    }
+    
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_mongo_reauth(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
+    ngx_http_mongo_auth_t *auths;
+    ngx_uint_t i;
+    auths = mongo_conn->auths->elts;
+
+    for (i = 0; i < mongo_conn->auths->nelts; i++) {
+        if(!mongo_cmd_authenticate( &mongo_conn->conn, 
+                                    (const char*)auths[i].db.data, 
+                                    (const char*)auths[i].user.data, 
+                                    (const char*)auths[i].pass.data )) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "Invalid mongo user/pass: %s/%s", 
+                          auths[i].user.data, 
+                          auths[i].pass.data);   
+            return NGX_ERROR;
+        }
+    }    
     return NGX_OK;
 }
 
@@ -563,6 +633,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_uint_t numchunks;
     char* contenttype;
     volatile ngx_uint_t i;
+    volatile ngx_int_t found = 0;
     ngx_int_t rc = NGX_OK;
     bson query;
     bson_buffer buf;
@@ -618,9 +689,22 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                     (const char*)gridfs_conf->root_collection.data,
                     &gfs);
     } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
-        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Mongo connection dropped");
-        return NGX_HTTP_SERVICE_UNAVAILABLE;
+        if (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
+            || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Mongo connection dropped, could not reconnect");
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
+        MONGO_TRY_GENERIC(&mongo_conn->conn){  
+            gridfs_init(&mongo_conn->conn,
+                        (const char*)gridfs_conf->db.data,
+                        (const char*)gridfs_conf->root_collection.data,
+                        &gfs);
+        } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Mongo connection dropped, could not reconnect");
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
     }
 
     bson_buffer_init(&buf);
@@ -638,18 +722,26 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     }
     bson_from_buffer(&query, &buf);
 
-    int found = 0;
-
     MONGO_TRY_GENERIC(&mongo_conn->conn){  
         found = gridfs_find_query(&gfs, &query, &gfile);
     } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
-        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Mongo connection dropped");
-        bson_destroy(&query);
-        free(value);
-        return NGX_HTTP_SERVICE_UNAVAILABLE;
+        if (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
+            || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Mongo connection dropped, could not reconnect");
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
+        MONGO_TRY_GENERIC(&mongo_conn->conn){  
+            found = gridfs_find_query(&gfs, &query, &gfile);
+        } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Mongo connection dropped, could not reconnect");
+            bson_destroy(&query);
+            free(value);
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
     }
-
+    
     bson_destroy(&query);
     free(value);
 
@@ -737,10 +829,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         MONGO_TRY_GENERIC(&mongo_conn->conn) {
             cursors[i] = gridfile_get_chunks(&gfile, i, 1);
 	} MONGO_CATCH_GENERIC(&mongo_conn->conn) {
-            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                          "Mongo connection dropped");
-            return NGX_HTTP_SERVICE_UNAVAILABLE;
+            if (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
+                || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                              "Mongo connection dropped, could not reconnect");
+                return NGX_HTTP_SERVICE_UNAVAILABLE;
+            }
+            MONGO_TRY_GENERIC(&mongo_conn->conn){  
+                cursors[i] = gridfile_get_chunks(&gfile, i, 1);
+            } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
+                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                              "Mongo connection dropped, could not reconnect");
+                return NGX_HTTP_SERVICE_UNAVAILABLE;
+            }
         }
+        
         mongo_cursor_next(cursors[i]);
 	chunk = cursors[i]->current;
 	bson_find(&it, &chunk, "data");
