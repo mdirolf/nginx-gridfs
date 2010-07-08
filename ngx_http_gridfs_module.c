@@ -369,24 +369,19 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* cf, void* void_parent, v
     return NGX_CONF_OK; 
 }
 
-ngx_http_mongo_connection_t* ngx_http_get_mongo_connection(ngx_log_t *log, ngx_str_t name) {
+ngx_http_mongo_connection_t* ngx_http_get_mongo_connection( ngx_str_t name ) {
     ngx_http_mongo_connection_t *mongo_conns;
     ngx_uint_t i;
     
     mongo_conns = ngx_http_mongo_connections.elts;
 
     for ( i = 0; i < ngx_http_mongo_connections.nelts; i++ ) {
-        if ( name.data == NULL && mongo_conns[i].name.data == NULL ) {
-            return &mongo_conns[i];
-        }
         if ( name.len == mongo_conns[i].name.len
              && ngx_strncmp(name.data, mongo_conns[i].name.data, name.len) == 0 ) {
             return &mongo_conns[i];
         }
     }
-    
-    ngx_log_error(NGX_LOG_ERR, log, 0,
-                  "Mongo Connection not found: %.*s", name.len, name.data);
+
     return NULL;
 }
 
@@ -397,7 +392,11 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
     char *test;
     int error;
 
-    mongo_conn = ngx_http_get_mongo_connection(log, gridfs_loc_conf->mongo);
+    mongo_conn = ngx_http_get_mongo_connection( gridfs_loc_conf->mongo );
+    if (mongo_conn == NULL) {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+                  "Mongo Connection not found: \"%V\"", &gridfs_loc_conf->mongo);
+    }
 
     // Authenticate
     if (gridfs_loc_conf->user.data != NULL && gridfs_loc_conf->pass.data != NULL) {
@@ -442,7 +441,7 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
 
     mongods = gridfs_loc_conf->mongods->elts;
 
-    mongo_conn = ngx_http_get_mongo_connection(cycle->log, gridfs_loc_conf->mongo);
+    mongo_conn = ngx_http_get_mongo_connection( gridfs_loc_conf->mongo );
     if (mongo_conn != NULL) {
         return NGX_OK; 
     }
@@ -678,8 +677,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     }
 
     /* Find the GridFile */
-    mongo_conn = ngx_http_get_mongo_connection(request->connection->log, gridfs_conf->mongo);
+    mongo_conn = ngx_http_get_mongo_connection( gridfs_conf->mongo );
     if (mongo_conn == NULL) {
+        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                  "Mongo Connection not found: \"%V\"", &gridfs_conf->mongo);
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
