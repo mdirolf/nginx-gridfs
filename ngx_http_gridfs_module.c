@@ -360,7 +360,7 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* cf, void* void_parent, v
         }
     }
 
-    // Add the local gridfs conf to a mongo connection
+    // Add the local gridfs conf to the main gridfs conf
     if (child->db.data) {
         gridfs_loc_conf = ngx_array_push(&gridfs_main_conf->loc_confs);
         *gridfs_loc_conf = child;
