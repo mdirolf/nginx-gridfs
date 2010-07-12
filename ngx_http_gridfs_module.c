@@ -672,7 +672,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
 
-    // Locate the proper mongo connection
+    // ---------- ENSURE MONGO CONNECTION ---------- //
+
     mongo_conn = ngx_http_get_mongo_connection( gridfs_conf->mongo );
     if (mongo_conn == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
@@ -680,7 +681,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
     
-    // Connect to mongo if not connected
     if ( !(&mongo_conn->conn.connected)
          && (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
              || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR)) {
@@ -690,17 +690,18 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_SERVICE_UNAVAILABLE;
     }
 
+
+    // ---------- RETRIEVE KEY ---------- //
+
     location_name = core_conf->name;
     full_uri = request->uri;
 
-    /* defensive */
     if (full_uri.len < location_name.len) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                       "Invalid location name or uri.");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    /* Extract the value from the uri */
     value = (char*)malloc(sizeof(char) * (full_uri.len - location_name.len + 1));
     if (value == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
@@ -710,7 +711,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     memcpy(value, full_uri.data + location_name.len, full_uri.len - location_name.len);
     value[full_uri.len - location_name.len] = '\0';
 
-    /* URL Decoding */
     if (!url_decode(value)) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                       "Malformed request.");
@@ -718,7 +718,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_BAD_REQUEST;
     }
 
-    // Initiate GridFS
+    // ---------- RETRIEVE GRIDFILE ---------- //
+
     do {
         MONGO_TRY_GENERIC(&mongo_conn->conn){
             e = FALSE;
@@ -739,7 +740,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
     } while (e);
 
-    // Query for the GridFile
     bson_buffer_init(&buf);
     switch (gridfs_conf->type) {
     case  bson_oid:
@@ -787,7 +787,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     numchunks = gridfile_get_numchunks(&gfile);
     contenttype = (char*)gridfile_get_contenttype(&gfile);
 
-    /* Set the headers */
+    // ---------- SEND THE HEADERS ---------- //
+
     request->headers_out.status = NGX_HTTP_OK;
     request->headers_out.content_length_n = length;
     if (contenttype != NULL) {
@@ -811,6 +812,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     }
 
     ngx_http_send_header(request);
+
+    // ---------- SEND THE BODY ---------- //
 
     /* Empty file */
     if (numchunks == 0) {
