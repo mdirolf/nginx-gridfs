@@ -50,8 +50,10 @@
 #define TRUE 1
 #define FALSE 0
 
+/* Parse config directive */
 static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy);
 
+/* Parse config directive */
 static char* ngx_http_gridfs(ngx_conf_t* directive, ngx_command_t* command, void* gridfs_conf);
 
 static void* ngx_http_gridfs_create_main_conf(ngx_conf_t* directive);
@@ -70,11 +72,12 @@ typedef struct {
     ngx_str_t db;
     ngx_str_t root_collection;
     ngx_str_t field;
-    ngx_uint_t type;  
+    ngx_uint_t type;
     ngx_str_t user;
     ngx_str_t pass;
     ngx_str_t mongo;
     ngx_array_t* mongods; /* ngx_http_mongod_server_t */
+    ngx_str_t replset; /* Name of the replica set, if connecting. */
 } ngx_http_gridfs_loc_conf_t;
 
 typedef struct {
@@ -89,6 +92,7 @@ typedef struct {
     ngx_array_t *auths; /* ngx_http_mongo_auth_t */
 } ngx_http_mongo_connection_t;
 
+/* Maybe we should store a list of addresses instead. */
 typedef struct {
     ngx_str_t host;
     in_port_t port;
@@ -103,6 +107,7 @@ typedef struct {
     ngx_uint_t numchunks;
 } ngx_http_gridfs_cleanup_t;
 
+/* Array specifying how to handle configuration directives. */
 static ngx_command_t ngx_http_gridfs_commands[] = {
 
     {
@@ -126,6 +131,7 @@ static ngx_command_t ngx_http_gridfs_commands[] = {
     ngx_null_command
 };
 
+/* Module context. */
 static ngx_http_module_t ngx_http_gridfs_module_ctx = {
     NULL, /* preconfiguration */
     NULL, /* postconfiguration */
@@ -137,6 +143,7 @@ static ngx_http_module_t ngx_http_gridfs_module_ctx = {
     ngx_http_gridfs_merge_loc_conf
 };
 
+/* Module definition. */
 ngx_module_t ngx_http_gridfs_module = {
     NGX_MODULE_V1,
     &ngx_http_gridfs_module_ctx,
@@ -154,6 +161,7 @@ ngx_module_t ngx_http_gridfs_module = {
 
 ngx_array_t ngx_http_mongo_connections;
 
+/* Parse the 'mongo' directive. */
 static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf) {
     ngx_str_t *value;
     ngx_url_t u;
@@ -165,19 +173,26 @@ static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf
 
     value = cf->args->elts;
     gridfs_loc_conf->mongo = value[1];
-    gridfs_loc_conf->mongods = ngx_array_create(cf->pool, 4, 
+    gridfs_loc_conf->mongods = ngx_array_create(cf->pool, 7,
                                                 sizeof(ngx_http_mongod_server_t));
-    if (gridfs_loc_conf->mongods == NULL) { 
-        return NULL; 
+    if (gridfs_loc_conf->mongods == NULL) {
+        return NULL;
     }
-    
-    for (i = 1; i < cf->args->nelts; i++) {
-        
+
+    /* Store the name of the replica set. This will be the last value in the 'mongo' directive. */
+    if( cf->args->nelts >= 2 ) {
+        gridfs_loc_conf->replset.len = strlen( (char *)(value + 1)->data );
+        gridfs_loc_conf->replset.data = ngx_pstrdup( cf->pool, value + 1 );
+    }
+
+    /* If nelts is greater than 1, then note that we're connecting to a replica set.*/
+    for (i = 2; i < cf->args->nelts; i++) {
+
         ngx_memzero(&u, sizeof(ngx_url_t));
-        
+
         u.url = value[i];
         u.default_port = 27017;
-        
+
         if (ngx_parse_url(cf->pool, &u) != NGX_OK) {
             if (u.err) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -185,7 +200,7 @@ static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf
             }
             return NGX_CONF_ERROR;
         }
-        
+
         mongod_server = ngx_array_push(gridfs_loc_conf->mongods);
         mongod_server->host = u.host;
         mongod_server->port = u.port;
@@ -195,12 +210,13 @@ static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf
     return NGX_CONF_OK;
 }
 
+/* Parse the 'gridfs' directive. */
 static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_conf) {
     ngx_http_gridfs_loc_conf_t *gridfs_loc_conf = void_conf;
     ngx_http_core_loc_conf_t* core_conf;
     ngx_str_t *value, type;
-    ngx_uint_t i;
-    
+    volatile ngx_uint_t i;
+
     core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     core_conf-> handler = ngx_http_gridfs_handler;
 
@@ -248,7 +264,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
                                    "Unsupported Type: %s", (char *)value[i].data);
                 return NGX_CONF_ERROR;
             }
-            
+
             continue;
         }
 
@@ -290,7 +306,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
                            "Username without password");
         return NGX_CONF_ERROR;
     }
-  
+
     return NGX_CONF_OK;
 }
 
@@ -358,7 +374,7 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* cf, void* void_parent, v
         if (parent->mongods != NGX_CONF_UNSET_PTR) {
             child->mongods = parent->mongods;
         } else {
-            child->mongods = ngx_array_create(cf->pool, 4, 
+            child->mongods = ngx_array_create(cf->pool, 4,
                                               sizeof(ngx_http_mongod_server_t));
             mongod_server = ngx_array_push(child->mongods);
             mongod_server->host.data = (u_char *)"127.0.0.1";
@@ -373,13 +389,13 @@ static char* ngx_http_gridfs_merge_loc_conf(ngx_conf_t* cf, void* void_parent, v
         *gridfs_loc_conf = child;
     }
 
-    return NGX_CONF_OK; 
+    return NGX_CONF_OK;
 }
 
 ngx_http_mongo_connection_t* ngx_http_get_mongo_connection( ngx_str_t name ) {
     ngx_http_mongo_connection_t *mongo_conns;
     ngx_uint_t i;
-    
+
     mongo_conns = ngx_http_mongo_connections.elts;
 
     for ( i = 0; i < ngx_http_mongo_connections.nelts; i++ ) {
@@ -423,7 +439,7 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
         mongo_auth->user = gridfs_loc_conf->user;
         mongo_auth->pass = gridfs_loc_conf->pass;
     }
-    
+
     // Run a test command to test authentication.
     test = (char*)malloc( gridfs_loc_conf->db.len + sizeof(".test"));
     ngx_cpystrn((u_char*)test, (u_char*)gridfs_loc_conf->db.data, gridfs_loc_conf->db.len+1);
@@ -436,21 +452,22 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
         ngx_log_error(NGX_LOG_ERR, log, 0, "Authentication Required");
         return NGX_ERROR;
     }
-    
+
     return NGX_OK;
 }
 
 static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_gridfs_loc_conf_t* gridfs_loc_conf) {
     ngx_http_mongo_connection_t* mongo_conn;
-    mongo_connection_options left, right;
     mongo_conn_return status;
     ngx_http_mongod_server_t *mongods;
+    volatile ngx_uint_t i;
+    u_char host[255];
 
     mongods = gridfs_loc_conf->mongods->elts;
 
     mongo_conn = ngx_http_get_mongo_connection( gridfs_loc_conf->mongo );
     if (mongo_conn != NULL) {
-        return NGX_OK; 
+        return NGX_OK;
     }
 
     mongo_conn = ngx_array_push(&ngx_http_mongo_connections);
@@ -462,22 +479,26 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
     mongo_conn->auths = ngx_array_create(cycle->pool, 4, sizeof(ngx_http_mongo_auth_t));
 
     if ( gridfs_loc_conf->mongods->nelts == 1 ) {
-        ngx_cpystrn( (u_char*)left.host, 
-                     mongods[0].host.data, 
-                     mongods[0].host.len + 1 );
-        left.port = mongods[0].port;
-        status = mongo_connect(&mongo_conn->conn, &left);
-    } else if ( gridfs_loc_conf->mongods->nelts == 2 ) {
-        ngx_cpystrn( (u_char*)left.host, 
-                     mongods[0].host.data, 
-                     mongods[0].host.len + 1 );
-        left.port = mongods[0].port;
-        ngx_cpystrn( (u_char*)right.host, 
-                     mongods[1].host.data, 
-                     mongods[1].host.len + 1 );
-        right.port = mongods[1].port;
-        status = mongo_connect_pair(&mongo_conn->conn, &left, &right);
+        ngx_cpystrn( host, mongods[0].host.data, mongods[0].host.len + 1 );
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Attempting connection to %s:%d", host, mongods[0].port);
+        status = mongo_connect( &mongo_conn->conn, (const char*)host, mongods[0].port );
+    } else if ( gridfs_loc_conf->mongods->nelts >= 2 && gridfs_loc_conf->mongods->nelts < 9 ) {
+
+        /* TODO: The final string in the list of directives to
+         * 'mongo' will be the name of the replica set. */
+        mongo_replset_init_conn( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
+
+        /* Add each seed minus the last, since that's the replica set name. */
+        for( i=0; i<gridfs_loc_conf->mongods->nelts; ++i ) {
+            ngx_cpystrn( host, mongods[i].host.data, mongods[i].host.len + 1 );
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Adding replset seed %s:%d", host, mongods[i].port);
+            mongo_replset_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
+        }
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Att %s:%d", host, mongods[i].port);
+        status = mongo_replset_connect( &mongo_conn->conn );
     } else {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                          "Mongo Nginx Exception: Too many strings provided in 'mongo' directive.");
         return NGX_ERROR;
     }
 
@@ -485,7 +506,7 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
         case mongo_conn_success:
             break;
         case mongo_conn_bad_arg:
-	    ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Bad Arguments");
             return NGX_ERROR;
         case mongo_conn_no_socket:
@@ -494,19 +515,26 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
             return NGX_ERROR;
         case mongo_conn_fail:
             ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
-                          "Mongo Exception: Connection Failure %s:%i;",
-                          left.host, left.port);
+                          "Mongo Exception: Connection Failure.");
             return NGX_ERROR;
         case mongo_conn_not_master:
             ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Not Master");
+            return NGX_ERROR;
+        case mongo_conn_bad_set_name:
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                          "Mongo Exception: Replica set name %s does not match.", gridfs_loc_conf->replset.data);
+            return NGX_ERROR;
+        case mongo_conn_cannot_find_primary:
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                          "Mongo Exception: Cannot connect to primary node.");
             return NGX_ERROR;
         default:
             ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Exception: Unknown Error");
             return NGX_ERROR;
     }
-    
+
     return NGX_OK;
 }
 
@@ -558,8 +586,8 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
         case mongo_conn_fail:
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "Mongo Exception: Connection Failure %s:%i;",
-                          mongo_conn->conn.left_opts->host, 
-                          mongo_conn->conn.left_opts->port);
+                          mongo_conn->conn.primary->host,
+                          mongo_conn->conn.primary->port);
             return NGX_ERROR;
         case mongo_conn_not_master:
             ngx_log_error(NGX_LOG_ERR, log, 0,
@@ -824,14 +852,14 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                           "Failed to allocate response buffer");
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-	
-	buffer->pos = NULL;
-	buffer->last = NULL;
-	buffer->memory = 1;
-	buffer->last_buf = 1;
-	out.buf = buffer;
-	out.next = NULL;
-	return ngx_http_output_filter(request, &out);
+
+        buffer->pos = NULL;
+        buffer->last = NULL;
+        buffer->memory = 1;
+        buffer->last_buf = 1;
+        out.buf = buffer;
+        out.next = NULL;
+        return ngx_http_output_filter(request, &out);
     }
     
     cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
@@ -862,7 +890,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
-	/* Fetch the chunk from mongo */
+        /* Fetch the chunk from mongo */
         do {
             MONGO_TRY_GENERIC(&mongo_conn->conn){
                 e = FALSE;
@@ -881,10 +909,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
             }
         } while (e);
 
-	chunk = cursors[i]->current;
-	bson_find(&it, &chunk, "data");
-	chunk_len = bson_iterator_bin_len( &it );
-	chunk_data = bson_iterator_bin_data( &it );
+        chunk = cursors[i]->current;
+        bson_find(&it, &chunk, "data");
+        chunk_len = bson_iterator_bin_len( &it );
+        chunk_data = bson_iterator_bin_data( &it );
 
         /* Set up the buffer chain */
         buffer->pos = (u_char*)chunk_data;
@@ -908,7 +936,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
 static void ngx_http_gridfs_cleanup(void* data) {
     ngx_http_gridfs_cleanup_t* gridfs_clndata;
-    ngx_uint_t i;
+    volatile ngx_uint_t i;
 
     gridfs_clndata = data;
 
