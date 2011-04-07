@@ -166,6 +166,7 @@ static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf
     ngx_str_t *value;
     ngx_url_t u;
     ngx_uint_t i;
+    ngx_uint_t start;
     ngx_http_mongod_server_t *mongod_server;
     ngx_http_gridfs_loc_conf_t *gridfs_loc_conf;
 
@@ -179,14 +180,20 @@ static char * ngx_http_mongo(ngx_conf_t *cf, ngx_command_t *cmd, void *void_conf
         return NULL;
     }
 
-    /* Store the name of the replica set. This will be the last value in the 'mongo' directive. */
-    if( cf->args->nelts >= 2 ) {
+    /* If nelts is greater than 3, then the user has specified more than one
+     * setting in the 'mongo' directive. So we assume that we're connecting
+     * to a replica set and that the first string of the directive is the replica
+     * set name. We also start looking for host-port pairs at position 2; otherwise,
+     * we start at position 1.
+     */
+    if( cf->args->nelts >= 3 ) {
         gridfs_loc_conf->replset.len = strlen( (char *)(value + 1)->data );
         gridfs_loc_conf->replset.data = ngx_pstrdup( cf->pool, value + 1 );
-    }
+        start = 2;
+    } else
+        start = 1;
 
-    /* If nelts is greater than 1, then note that we're connecting to a replica set.*/
-    for (i = 2; i < cf->args->nelts; i++) {
+    for (i = start; i < cf->args->nelts; i++) {
 
         ngx_memzero(&u, sizeof(ngx_url_t));
 
@@ -494,7 +501,7 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
             ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Adding replset seed %s:%d", host, mongods[i].port);
             mongo_replset_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
         }
-        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Att %s:%d", host, mongods[i].port);
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Attempting replset connection %s:%d", host, mongods[i].port);
         status = mongo_replset_connect( &mongo_conn->conn );
     } else {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
