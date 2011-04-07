@@ -491,11 +491,10 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
         status = mongo_connect( &mongo_conn->conn, (const char*)host, mongods[0].port );
     } else if ( gridfs_loc_conf->mongods->nelts >= 2 && gridfs_loc_conf->mongods->nelts < 9 ) {
 
-        /* TODO: The final string in the list of directives to
-         * 'mongo' will be the name of the replica set. */
+        /* Initiate replica set connection. */
         mongo_replset_init_conn( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
 
-        /* Add each seed minus the last, since that's the replica set name. */
+        /* Add replica set seeds. */
         for( i=0; i<gridfs_loc_conf->mongods->nelts; ++i ) {
             ngx_cpystrn( host, mongods[i].host.data, mongods[i].host.len + 1 );
             ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Adding replset seed %s:%d", host, mongods[i].port);
