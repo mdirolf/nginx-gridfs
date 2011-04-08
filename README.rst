@@ -65,9 +65,7 @@ When connecting to a single server::
 
 When connecting to a replica set::
 
-:syntax: *mongo REPLICA_SET_NAME*
-                *MONGOD_SEED_1*
-                *MONGOD_SEED_2*
+:syntax: *mongo REPLICA_SET_NAME* *MONGOD_SEED_1* *MONGOD_SEED_2*
 :default: *127.0.0.1:27017*
 :context: location
 
@@ -93,7 +91,7 @@ Here is another configuration::
   location /gridfs/ {
       gridfs my_app field=filename type=string;
       mongo 127.0.0.1:27017;
-  } 
+  }
 
 This will set up Nginx to serve the file in gridfs with filename *foo*
 for any request to */gridfs/foo*
@@ -105,7 +103,6 @@ Here's how to connect to a replica set called "foo" with two seed nodes::
       mongo "foo"
             10.7.2.27:27017
             10.7.2.28:27017;
-
   }
 
 Here is another configuration::
@@ -140,6 +137,7 @@ Credits
 * Chris Heald (cheald) - better handling of binary content
 * Paul Dlug (pdlug) - mongo authentication
 * Todd Zusman (toddzinc) - gzip handling
+* Kyle Banker (banker) - replica set support
 
 License
 =======
