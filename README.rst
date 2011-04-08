@@ -57,12 +57,24 @@ only required parameter is DB_NAME to specify the database to serve files from.
 
 **mongo**
 
+When connecting to a single server::
+
 :syntax: *mongo MONGOD_HOST*
 :default: *127.0.0.1:27017*
 :context: location
 
-This directive specifies a mongod to connect to. MONGOD_HOST should be in the
-form of hostname:port. This directive is optional.
+When connecting to a replica set::
+
+:syntax: *mongo REPLICA_SET_NAME*
+                *MONGOD_SEED_1*
+                *MONGOD_SEED_2*
+:default: *127.0.0.1:27017*
+:context: location
+
+This directive specifies a mongod or replica set to connect to. MONGOD_HOST should be in the
+form of hostname:port. REPLICA_SET_NAME should be the name of the replica set to connect to.
+
+If this directive is not provided, the module will attempt to connect to a MongoDB server at *127.0.0.1:27017*.
 
 Sample Configurations
 ---------------------
@@ -85,6 +97,16 @@ Here is another configuration::
 
 This will set up Nginx to serve the file in gridfs with filename *foo*
 for any request to */gridfs/foo*
+
+Here's how to connect to a replica set called "foo" with two seed nodes::
+
+  location /gridfs/ {
+      gridfs my_app field=filename type=string;
+      mongo "foo"
+            10.7.2.27:27017
+            10.7.2.28:27017;
+
+  }
 
 Here is another configuration::
 
