@@ -487,7 +487,6 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
 
     if ( gridfs_loc_conf->mongods->nelts == 1 ) {
         ngx_cpystrn( host, mongods[0].host.data, mongods[0].host.len + 1 );
-        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Attempting connection to %s:%d", host, mongods[0].port);
         status = mongo_connect( &mongo_conn->conn, (const char*)host, mongods[0].port );
     } else if ( gridfs_loc_conf->mongods->nelts >= 2 && gridfs_loc_conf->mongods->nelts < 9 ) {
 
@@ -497,10 +496,8 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
         /* Add replica set seeds. */
         for( i=0; i<gridfs_loc_conf->mongods->nelts; ++i ) {
             ngx_cpystrn( host, mongods[i].host.data, mongods[i].host.len + 1 );
-            ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Adding replset seed %s:%d", host, mongods[i].port);
             mongo_replset_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
         }
-        ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "Attempting replset connection %s:%d", host, mongods[i].port);
         status = mongo_replset_connect( &mongo_conn->conn );
     } else {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
@@ -572,7 +569,7 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
 
     MONGO_TRY_GENERIC(&mongo_conn->conn) {
         if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
-        ngx_msleep(MONGO_RECONNECT_WAITTIME); // Due to SERVER-1389
+        ngx_msleep(MONGO_RECONNECT_WAITTIME);
         status = mongo_reconnect(&mongo_conn->conn);
     } MONGO_CATCH_GENERIC(&mongo_conn->conn) { 
         status = mongo_conn_fail;
@@ -582,7 +579,7 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
         case mongo_conn_success:
             break;
         case mongo_conn_bad_arg:
-	    ngx_log_error(NGX_LOG_ERR, log, 0,
+            ngx_log_error(NGX_LOG_ERR, log, 0,
                           "Mongo Exception: Bad Arguments");
             return NGX_ERROR;
         case mongo_conn_no_socket:
@@ -763,7 +760,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                         &gfs);
         } MONGO_CATCH_GENERIC(&mongo_conn->conn) {
             e = TRUE; ecounter++;
-            if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST 
+            if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
                 || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
                 || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
