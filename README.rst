@@ -11,6 +11,13 @@ About
 content directly from `MongoDB <http://www.mongodb.org/>`_'s `GridFS
 <http://www.mongodb.org/display/DOCS/GridFS>`_.
 
+Version
+============
+The minor version will be incremented with each release until
+a stable 1.0 is reached. To check out a particular version::
+
+    $ git checkout v0.8
+
 Dependencies
 ============
 **nginx-gridfs** requires the Mongo-C-Driver which is a submodule to
