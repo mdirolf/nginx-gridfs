@@ -684,6 +684,9 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_uint_t chunksize;
     ngx_uint_t numchunks;
     char* contenttype;
+    char* md5;
+    bson_date_t last_modified;
+
     volatile ngx_uint_t i;
     volatile ngx_int_t found = 0;
     ngx_int_t rc = NGX_OK;
@@ -818,6 +821,9 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     numchunks = gridfile_get_numchunks(&gfile);
     contenttype = (char*)gridfile_get_contenttype(&gfile);
 
+    md5 = (char*)gridfile_get_md5(&gfile);
+    last_modified = gridfile_get_uploaddate(&gfile);
+
     // ---------- SEND THE HEADERS ---------- //
 
     request->headers_out.status = NGX_HTTP_OK;
@@ -827,6 +833,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         request->headers_out.content_type.data = (u_char*)contenttype;
     }
     else ngx_http_set_content_type(request);
+
+    // use md5 field as ETag if possible
+    if (md5 != NULL) {
+        request->headers_out.etag = ngx_list_push(&request->headers_out.headers);
+        request->headers_out.etag->hash = 1;
+        request->headers_out.etag->key.len = sizeof("ETag") - 1;
+        request->headers_out.etag->key.data = (u_char*)"ETag";
+        request->headers_out.etag->value.len = strlen(md5);
+        request->headers_out.etag->value.data = (u_char*)md5;
+    }
+    
+    // use uploadDate field as last_modified if possible
+    if (last_modified) {
+        request->headers_out.last_modified_time = (time_t)(last_modified/1000);
+    }
 
     /* Determine if content is gzipped, set headers accordingly */
     if ( gridfile_get_boolean(&gfile,"gzipped") ) {
