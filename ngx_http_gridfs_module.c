@@ -840,8 +840,12 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         request->headers_out.etag->hash = 1;
         request->headers_out.etag->key.len = sizeof("ETag") - 1;
         request->headers_out.etag->key.data = (u_char*)"ETag";
-        request->headers_out.etag->value.len = strlen(md5);
-        request->headers_out.etag->value.data = (u_char*)md5;
+
+        ngx_buf_t *b;  
+        b = ngx_create_temp_buf(request->pool, strlen(md5) + 2);  
+        b->last = ngx_sprintf(b->last, "\"%s\"", md5);
+        request->headers_out.etag->value.len = strlen(md5) + 2;
+        request->headers_out.etag->value.data = b->start;
     }
     
     // use uploadDate field as last_modified if possible
