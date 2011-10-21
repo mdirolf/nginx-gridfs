@@ -418,6 +418,7 @@ ngx_http_mongo_connection_t* ngx_http_get_mongo_connection( ngx_str_t name ) {
 static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc_conf_t *gridfs_loc_conf) {
     ngx_http_mongo_connection_t* mongo_conn;
     ngx_http_mongo_auth_t *mongo_auth;
+    mongo_cursor *cursor = NULL;
     bson empty;
     char *test;
     int error;
@@ -452,9 +453,10 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
     ngx_cpystrn((u_char*)test, (u_char*)gridfs_loc_conf->db.data, gridfs_loc_conf->db.len+1);
     ngx_cpystrn((u_char*)(test+gridfs_loc_conf->db.len),(u_char*)".test", sizeof(".test"));
     bson_empty(&empty);
-    mongo_find(&mongo_conn->conn, test, &empty, NULL, 0, 0, 0);
+    cursor = mongo_find(&mongo_conn->conn, test, &empty, NULL, 0, 0, 0);
     error =  mongo_cmd_get_last_error(&mongo_conn->conn, (char*)gridfs_loc_conf->db.data, NULL);
     free(test);
+    mongo_cursor_destroy(cursor);
     if (error) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "Authentication Required");
         return NGX_ERROR;
@@ -786,7 +788,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     free(value);
 
     if(status == MONGO_ERROR) {
-        gridfile_destroy(&gfile);
         gridfs_destroy(&gfs);
         return NGX_HTTP_NOT_FOUND;
     }
