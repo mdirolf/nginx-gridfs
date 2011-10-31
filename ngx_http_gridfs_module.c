@@ -796,6 +796,15 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     length = gridfile_get_contentlength(&gfile);
     chunksize = gridfile_get_chunksize(&gfile);
     numchunks = gridfile_get_numchunks(&gfile);
+
+    // NaN workaround
+    if (numchunks > INT_MAX)
+    {
+        gridfile_destroy(&gfile);
+        gridfs_destroy(&gfs);
+        return NGX_HTTP_NOT_FOUND;
+    }
+
     contenttype = (char*)gridfile_get_contenttype(&gfile);
 
     md5 = (char*)gridfile_get_md5(&gfile);
