@@ -132,7 +132,6 @@ file in gridfs with _id *123...* for any request to */gridfs/123...*
 Known Issues / TODO / Things You Should Hack On
 ===============================================
 
-* Some issues with large files
 * HTTP range support for partial downloads
 * Better error handling / logging
 
