@@ -569,7 +569,7 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
 static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
     volatile int status = MONGO_CONN_FAIL;
 
-    if (&mongo_conn->conn.connected) { 
+    if (&mongo_conn->conn.connected) {
         mongo_disconnect(&mongo_conn->conn);
         ngx_msleep(MONGO_RECONNECT_WAITTIME);
         status = mongo_reconnect(&mongo_conn->conn);
@@ -710,13 +710,19 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
     
-    if ( !(&mongo_conn->conn.connected)
-         && (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
-             || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR)) {
-        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Could not connect to mongo: \"%V\"", &gridfs_conf->mongo);
-        if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
-        return NGX_HTTP_SERVICE_UNAVAILABLE;
+    if (mongo_conn->conn.connected == 0) {
+        if (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Could not connect to mongo: \"%V\"", &gridfs_conf->mongo);
+            if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
+        if (ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Failed to reauth to mongo: \"%V\"", &gridfs_conf->mongo);
+            if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
     }
 
     // ---------- RETRIEVE KEY ---------- //
@@ -750,17 +756,18 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
     do {
         e = FALSE;
-        if (gridfs_init(&mongo_conn->conn,
-                        (const char*)gridfs_conf->db.data,
-                        (const char*)gridfs_conf->root_collection.data,
-                        &gfs) != MONGO_OK) {
+        status = gridfs_init(&mongo_conn->conn,
+                             (const char*)gridfs_conf->db.data,
+                             (const char*)gridfs_conf->root_collection.data,
+                             &gfs);
+        if (status != MONGO_OK) {
             e = TRUE; ecounter++;
             if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
                 || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
                 || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                               "Mongo connection dropped, could not reconnect");
-                if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
                 free(value);
                 return NGX_HTTP_SERVICE_UNAVAILABLE;
             }
@@ -929,7 +936,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                     || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                     ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                                   "Mongo connection dropped, could not reconnect");
-                    if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                    if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
                     gridfile_destroy(&gfile);
                     gridfs_destroy(&gfs);
                     return NGX_HTTP_SERVICE_UNAVAILABLE;
