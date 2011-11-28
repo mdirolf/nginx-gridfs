@@ -556,10 +556,10 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
 
     for (i = 0; i < gridfs_main_conf->loc_confs.nelts; i++) {
         if (ngx_http_mongo_add_connection(cycle, gridfs_loc_confs[i]) == NGX_ERROR) {
-            return NGX_ERROR;
+            return NGX_OK;
         }
         if (ngx_http_mongo_authenticate(cycle->log, gridfs_loc_confs[i]) == NGX_ERROR) {
-            return NGX_ERROR;
+            return NGX_OK;
         }
     }
 
