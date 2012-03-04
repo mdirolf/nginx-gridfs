@@ -673,6 +673,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_str_t location_name;
     ngx_str_t full_uri;
     char* value;
+    ngx_str_t type_param;
+    ngx_flag_t valid_type = 0;
+    ngx_flag_t find_untyped = 1;
+    char* filename_with_type;
     ngx_http_mongo_connection_t *mongo_conn;
     gridfs gfs;
     gridfile gfile;
@@ -685,6 +689,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     volatile ngx_uint_t i;
     ngx_int_t rc = NGX_OK;
     bson query;
+    bson query_with_type;
     bson_oid_t oid;
     mongo_cursor ** cursors;
     gridfs_offset chunk_len;
@@ -729,7 +734,8 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    value = (char*)malloc(sizeof(char) * (full_uri.len - location_name.len + 1));
+    int value_len = full_uri.len - location_name.len + 1;
+    value = (char*)malloc(sizeof(char) * value_len);
     if (value == NULL) {
         ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                       "Failed to allocate memory for value buffer.");
@@ -743,6 +749,21 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                       "Malformed request.");
         free(value);
         return NGX_HTTP_BAD_REQUEST;
+    }
+
+    if(ngx_http_arg(request, (u_char *) "type", 4, &type_param) == NGX_OK) {
+        valid_type = 1;
+        /* We need one extra byte for the _ (underscore) between filename and type */
+        filename_with_type = (char*)malloc(sizeof(char) * (value_len + type_param.len + 1));
+        if (filename_with_type == NULL) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Failed to allocate memory for filename_with_type buffer.");
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        memcpy(filename_with_type, value, value_len - 1);
+        filename_with_type[value_len - 1] = '_';
+        memcpy(filename_with_type + value_len, type_param.data, type_param.len);
+        filename_with_type[value_len + type_param.len] = '\0';
     }
 
     // ---------- RETRIEVE GRIDFILE ---------- //
@@ -766,29 +787,47 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
     } while (e);
 
-    bson_init(&query);
-    switch (gridfs_conf->type) {
-    case  BSON_OID:
-        bson_oid_from_string(&oid, value);
-        bson_append_oid(&query, (char*)gridfs_conf->field.data, &oid);
-        break;
-    case BSON_INT:
-      bson_append_int(&query, (char*)gridfs_conf->field.data, ngx_atoi((u_char*)value, strlen(value)));
-        break;
-    case BSON_STRING:
-        bson_append_string(&query, (char*)gridfs_conf->field.data, value);
-        break;
+    if (valid_type && filename_with_type != NULL) {
+        bson_init(&query_with_type);
+        bson_append_string(&query_with_type, (char*)gridfs_conf->field.data, filename_with_type);
+        bson_finish(&query_with_type);
+
+        status = gridfs_find_query(&gfs, &query_with_type, &gfile);
+
+        bson_destroy(&query_with_type);
+        free(filename_with_type);
+
+        if(status != MONGO_ERROR) {
+            find_untyped = 0;
+        }
     }
-    bson_finish(&query);
 
-    status = gridfs_find_query(&gfs, &query, &gfile);
-    
-    bson_destroy(&query);
-    free(value);
 
-    if(status == MONGO_ERROR) {
-        gridfs_destroy(&gfs);
-        return NGX_HTTP_NOT_FOUND;
+    if (find_untyped) {
+        bson_init(&query);
+        switch (gridfs_conf->type) {
+        case  BSON_OID:
+            bson_oid_from_string(&oid, value);
+            bson_append_oid(&query, (char*)gridfs_conf->field.data, &oid);
+            break;
+        case BSON_INT:
+          bson_append_int(&query, (char*)gridfs_conf->field.data, ngx_atoi((u_char*)value, strlen(value)));
+            break;
+        case BSON_STRING:
+            bson_append_string(&query, (char*)gridfs_conf->field.data, value);
+            break;
+        }
+        bson_finish(&query);
+
+        status = gridfs_find_query(&gfs, &query, &gfile);
+        
+        bson_destroy(&query);
+        free(value);
+
+        if(status == MONGO_ERROR) {
+            gridfs_destroy(&gfs);
+            return NGX_HTTP_NOT_FOUND;
+        }
     }
 
     /* Get information about the file */
