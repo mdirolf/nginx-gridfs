@@ -140,6 +140,7 @@ To use this, you just have to provide a *type=<value>* query parameter when requ
 (_) in between and serve that particular version of the file.
 
 **NOTE** : 
+
 * This can be used only if the field type that is being queried on is String. This will not work with ObjectId and Integer fields.
 * The name of the query parameter **must** be *type*.
 * The additional versions of the file **must** follow the convention of naming the file as *filename_<version>*
