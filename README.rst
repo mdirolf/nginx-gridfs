@@ -129,6 +129,53 @@ authenticate use of database *my_app* with username/password combo *foo/bar*.
 The gridfs root_collection is specified as *pics*. Nginx will then serve the 
 file in gridfs with _id *123...* for any request to */gridfs/123...*
 
+Multiple versions of the files
+===============================
+
+**nginx-gridfs** allows you to serve multiple versions of the same file based on a query parameter.
+This is useful, for instance, when you want to serve images of different sizes and/or quality.
+
+To use this you just have to provide a *type=<value>* query parameter when requesting the file.
+**nginx-gridfs** will pick it up automatically, append the *value* to the filename with an underscore 
+*_* in between and serve that particular version of the file.
+
+**NOTE** : 
+  * This can be used only if the field type that is being queried on is String. This will not work
+with ObjectId and Integer fields.
+  * The name of the query parameter must be *type*.
+  * The additional versions of the file must follow the convention of naming the file as *filename_<version>*
+
+Examples
+---------
+
+Assuming you have the following configuration to serve images from GridFS :
+
+  location /gridfs/ {
+      gridfs my_app field=filename type=string;
+      mongo 127.0.0.1:27017;
+  }
+
+and you two extra versions of the images named *small* and *mid*.
+
+  * /gridfs/foo will serve the default version of the file with the filename *foo*
+  * /gridfs/foo?type=small will serve the "small" version of the file with the filename *foo_small*
+  * /gridfs/foo?type=mid will serve the "mid" version of the file with the filename *foo_mid*
+
+
+Fallback to default version
+----------------------------
+
+If a "type" is specified and that particular version of the file is not found, then *nginx-gridfs* will
+fallback to the default version of the file and serve that instead. This is particularly useful if you
+are generating the additional versions of the files asynchronously and all the versions may not always
+be available.
+
+In the above examples if */gridfs/foo?type=small* was requested and the file *foo_small* was not present
+in GridFS, **nginx-gridfs** will instead serve the default version of the file *foo*.
+
+Later when the *foo_small* version of the file is added, any subsequent request for */gridfs/foo?type=small*
+will be served the small version.
+
 Known Issues / TODO / Things You Should Hack On
 ===============================================
 

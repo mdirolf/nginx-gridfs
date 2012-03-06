@@ -751,6 +751,17 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         return NGX_HTTP_BAD_REQUEST;
     }
 
+    /*
+     * Check if a "type" parameter has been specified, asking for a specific version of
+     * the file. If yes we append the value of the parameter to the filename with an
+     * underscore in between to be used for querying.
+     *
+     * We keep the existing filename as it is so that we can fallback to that in case the
+     * specified version of the file is not present
+     *
+     * NOTE : This "type" parameter will be useful only if the type of the query field is
+     * String. ObjectId and Integer fields cannot leverage this.
+     */
     if(ngx_http_arg(request, (u_char *) "type", 4, &type_param) == NGX_OK) {
         valid_type = 1;
         /* We need one extra byte for the _ (underscore) between filename and type */
@@ -787,6 +798,14 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
     } while (e);
 
+    /*
+     * If we are provided with a "type" parameter then search for that specific version of the file
+     * first. If the specific version was found set the find_untyped to 0 (false) to prevent the
+     * fallback code from searching the default version of the file.
+     *
+     * If the search for the file resulted in an error the fallback code will be kick in automatically
+     * and search for the default version.
+     */
     if (valid_type && filename_with_type != NULL) {
         bson_init(&query_with_type);
         bson_append_string(&query_with_type, (char*)gridfs_conf->field.data, filename_with_type);
@@ -802,7 +821,10 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         }
     }
 
-
+    /*
+     * Search the for the default version of the file only if a specific version was not specified
+     * or the specified version of the file was not found.
+     */
     if (find_untyped) {
         bson_init(&query);
         switch (gridfs_conf->type) {
