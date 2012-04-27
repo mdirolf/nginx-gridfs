@@ -431,10 +431,11 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
 
     // Authenticate
     if (gridfs_loc_conf->user.data != NULL && gridfs_loc_conf->pass.data != NULL) {
-        if (!mongo_cmd_authenticate( &mongo_conn->conn, 
-                                     (const char*)gridfs_loc_conf->db.data, 
-                                     (const char*)gridfs_loc_conf->user.data, 
-                                     (const char*)gridfs_loc_conf->pass.data )) {
+        if (mongo_cmd_authenticate( &mongo_conn->conn, 
+				    (const char*)gridfs_loc_conf->db.data, 
+				    (const char*)gridfs_loc_conf->user.data, 
+				    (const char*)gridfs_loc_conf->pass.data )
+	    != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "Invalid mongo user/pass: %s/%s", 
                           gridfs_loc_conf->user.data, 
@@ -609,15 +610,16 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
 
 static ngx_int_t ngx_http_mongo_reauth(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
     ngx_http_mongo_auth_t *auths;
-    volatile ngx_uint_t i, success = 0;
+    volatile ngx_uint_t i;
+    volatile ngx_int_t status = 0;
     auths = mongo_conn->auths->elts;
 
     for (i = 0; i < mongo_conn->auths->nelts; i++) {
-        success = mongo_cmd_authenticate( &mongo_conn->conn, 
-                                          (const char*)auths[i].db.data, 
-                                          (const char*)auths[i].user.data, 
-                                          (const char*)auths[i].pass.data );
-        if (!success) {
+        status = mongo_cmd_authenticate( &mongo_conn->conn, 
+					 (const char*)auths[i].db.data, 
+					 (const char*)auths[i].user.data, 
+					 (const char*)auths[i].pass.data );
+        if (status != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "Invalid mongo user/pass: %s/%s, during reauth", 
                           auths[i].user.data, 
