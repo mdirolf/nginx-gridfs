@@ -2,4 +2,4 @@ ngx_addon_name=ngx_http_gridfs_module
 HTTP_MODULES="$HTTP_MODULES ngx_http_gridfs_module"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_gridfs_module.c $ngx_addon_dir/mongo-c-driver/src/*.c"
 NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/mongo-c-driver/src/*.h"
-CFLAGS="$CFLAGS --std=c99 -Isrc"
+CFLAGS="$CFLAGS -Wno-unused-function -Wno-missing-field-initializers -D_MONGO_USE_GETADDRINFO -D_POSIX_C_SOURCE=200112L --std=c99 -Isrc"
