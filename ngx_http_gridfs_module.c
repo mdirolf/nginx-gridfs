@@ -232,7 +232,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
 
     /* Parse the parameters */
     for (i = 2; i < cf->args->nelts; i++) {
-        if (ngx_strncmp(value[i].data, "root_collection=", 16) == 0) { 
+        if (ngx_strncmp(value[i].data, "root_collection=", 16) == 0) {
             gridfs_loc_conf->root_collection.data = (u_char *) &value[i].data[16];
             gridfs_loc_conf->root_collection.len = ngx_strlen(&value[i].data[16]);
             continue;
@@ -254,7 +254,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
             continue;
         }
 
-        if (ngx_strncmp(value[i].data, "type=", 5) == 0) { 
+        if (ngx_strncmp(value[i].data, "type=", 5) == 0) {
             type = (ngx_str_t) ngx_string(&value[i].data[5]);
 
             /* Currently only support for "objectid", "string", and "int" */
@@ -275,7 +275,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
             continue;
         }
 
-        if (ngx_strncmp(value[i].data, "user=", 5) == 0) { 
+        if (ngx_strncmp(value[i].data, "user=", 5) == 0) {
             gridfs_loc_conf->user.data = (u_char *) &value[i].data[5];
             gridfs_loc_conf->user.len = ngx_strlen(&value[i].data[5]);
             continue;
@@ -431,14 +431,14 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
 
     // Authenticate
     if (gridfs_loc_conf->user.data != NULL && gridfs_loc_conf->pass.data != NULL) {
-        if (mongo_cmd_authenticate( &mongo_conn->conn, 
-				    (const char*)gridfs_loc_conf->db.data, 
-				    (const char*)gridfs_loc_conf->user.data, 
+        if (mongo_cmd_authenticate( &mongo_conn->conn,
+				    (const char*)gridfs_loc_conf->db.data,
+				    (const char*)gridfs_loc_conf->user.data,
 				    (const char*)gridfs_loc_conf->pass.data )
 	    != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "Invalid mongo user/pass: %s/%s", 
-                          gridfs_loc_conf->user.data, 
+                          "Invalid mongo user/pass: %s/%s",
+                          gridfs_loc_conf->user.data,
                           gridfs_loc_conf->pass.data);
             return NGX_ERROR;
         }
@@ -490,18 +490,18 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
 
     if ( gridfs_loc_conf->mongods->nelts == 1 ) {
         ngx_cpystrn( host, mongods[0].host.data, mongods[0].host.len + 1 );
-        status = mongo_connect( &mongo_conn->conn, (const char*)host, mongods[0].port );
+        status = mongo_client( &mongo_conn->conn, (const char*)host, mongods[0].port );
     } else if ( gridfs_loc_conf->mongods->nelts >= 2 && gridfs_loc_conf->mongods->nelts < 9 ) {
 
         /* Initiate replica set connection. */
-        mongo_replset_init( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
+        mongo_replica_set_init( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
 
         /* Add replica set seeds. */
         for( i=0; i<gridfs_loc_conf->mongods->nelts; ++i ) {
             ngx_cpystrn( host, mongods[i].host.data, mongods[i].host.len + 1 );
-            mongo_replset_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
+            mongo_replica_set_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
         }
-        status = mongo_replset_connect( &mongo_conn->conn );
+        status = mongo_replica_set_client( &mongo_conn->conn );
     } else {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Nginx Exception: Too many strings provided in 'mongo' directive.");
@@ -570,7 +570,7 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
 static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
     volatile int status = MONGO_CONN_FAIL;
 
-    if (&mongo_conn->conn.connected) { 
+    if (&mongo_conn->conn.connected) {
         mongo_disconnect(&mongo_conn->conn);
         ngx_msleep(MONGO_RECONNECT_WAITTIME);
         status = mongo_reconnect(&mongo_conn->conn);
@@ -604,7 +604,7 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
                           "Mongo Exception: Unknown Error");
             return NGX_ERROR;
     }
-    
+
     return NGX_OK;
 }
 
@@ -615,19 +615,19 @@ static ngx_int_t ngx_http_mongo_reauth(ngx_log_t *log, ngx_http_mongo_connection
     auths = mongo_conn->auths->elts;
 
     for (i = 0; i < mongo_conn->auths->nelts; i++) {
-        status = mongo_cmd_authenticate( &mongo_conn->conn, 
-					 (const char*)auths[i].db.data, 
-					 (const char*)auths[i].user.data, 
+        status = mongo_cmd_authenticate( &mongo_conn->conn,
+					 (const char*)auths[i].db.data,
+					 (const char*)auths[i].user.data,
 					 (const char*)auths[i].pass.data );
         if (status != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "Invalid mongo user/pass: %s/%s, during reauth", 
-                          auths[i].user.data, 
-                          auths[i].pass.data);   
+                          "Invalid mongo user/pass: %s/%s, during reauth",
+                          auths[i].user.data,
+                          auths[i].pass.data);
             return NGX_ERROR;
         }
     }
-    
+
     return NGX_OK;
 }
 
@@ -696,7 +696,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_pool_cleanup_t* gridfs_cln;
     ngx_http_gridfs_cleanup_t* gridfs_clndata;
     int status;
-    volatile ngx_uint_t e = FALSE; 
+    volatile ngx_uint_t e = FALSE;
     volatile ngx_uint_t ecounter = 0;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
@@ -710,7 +710,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                       "Mongo Connection not found: \"%V\"", &gridfs_conf->mongo);
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    
+
     if ( !(&mongo_conn->conn.connected)
          && (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
              || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR)) {
@@ -784,7 +784,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     bson_finish(&query);
 
     status = gridfs_find_query(&gfs, &query, &gfile);
-    
+
     bson_destroy(&query);
     free(value);
 
@@ -818,13 +818,13 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         request->headers_out.etag->key.len = sizeof("ETag") - 1;
         request->headers_out.etag->key.data = (u_char*)"ETag";
 
-        ngx_buf_t *b;  
-        b = ngx_create_temp_buf(request->pool, strlen(md5) + 2);  
+        ngx_buf_t *b;
+        b = ngx_create_temp_buf(request->pool, strlen(md5) + 2);
         b->last = ngx_sprintf(b->last, "\"%s\"", md5);
         request->headers_out.etag->value.len = strlen(md5) + 2;
         request->headers_out.etag->value.data = b->start;
     }
-    
+
     // use uploadDate field as last_modified if possible
     if (last_modified) {
         request->headers_out.last_modified_time = (time_t)(last_modified/1000);
@@ -874,14 +874,14 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
         return ngx_http_output_filter(request, &out);
     }
-    
+
     cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
     if (cursors == NULL) {
       gridfile_destroy(&gfile);
       gridfs_destroy(&gfs);
       return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    
+
     ngx_memzero( cursors, sizeof(mongo_cursor *) * numchunks);
 
     /* Hook in the cleanup function */
@@ -915,7 +915,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
             cursors[i] = gridfile_get_chunks(&gfile, i, 1);
             if (!(cursors[i] && mongo_cursor_next(cursors[i]) == MONGO_OK)) {
                 e = TRUE; ecounter++;
-                if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST 
+                if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
                     || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
                     || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                     ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
