@@ -669,8 +669,8 @@ static int url_decode(char * filename) {
 
 static void gridfs_parse_range(ngx_http_request_t* r, ngx_str_t* range_str, uint64_t* range_start, uint64_t* range_end, gridfs_offset content_length) {
     u_char *p, *last;
-    off_t start, end, len;
-    ngx_uint_t suffix, bad;
+    off_t start, end;
+    ngx_uint_t bad;
     enum {
         sw_start = 0,
         sw_first_byte_pos,
@@ -695,8 +695,6 @@ static void gridfs_parse_range(ngx_http_request_t* r, ngx_str_t* range_str, uint
      */
 
     bad = 0;
-    len = 0;
-    suffix = 0;
     start = 0;
     end = 0;
 
@@ -708,7 +706,6 @@ static void gridfs_parse_range(ngx_http_request_t* r, ngx_str_t* range_str, uint
         case sw_first_byte_pos:
             if (*p == '-') {
                 p++;
-                suffix = 1;
                 state = sw_last_byte_pos;
                 break;
             }
