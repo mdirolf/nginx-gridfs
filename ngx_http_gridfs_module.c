@@ -232,7 +232,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
 
     /* Parse the parameters */
     for (i = 2; i < cf->args->nelts; i++) {
-        if (ngx_strncmp(value[i].data, "root_collection=", 16) == 0) { 
+        if (ngx_strncmp(value[i].data, "root_collection=", 16) == 0) {
             gridfs_loc_conf->root_collection.data = (u_char *) &value[i].data[16];
             gridfs_loc_conf->root_collection.len = ngx_strlen(&value[i].data[16]);
             continue;
@@ -254,7 +254,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
             continue;
         }
 
-        if (ngx_strncmp(value[i].data, "type=", 5) == 0) { 
+        if (ngx_strncmp(value[i].data, "type=", 5) == 0) {
             type = (ngx_str_t) ngx_string(&value[i].data[5]);
 
             /* Currently only support for "objectid", "string", and "int" */
@@ -275,7 +275,7 @@ static char* ngx_http_gridfs(ngx_conf_t* cf, ngx_command_t* command, void* void_
             continue;
         }
 
-        if (ngx_strncmp(value[i].data, "user=", 5) == 0) { 
+        if (ngx_strncmp(value[i].data, "user=", 5) == 0) {
             gridfs_loc_conf->user.data = (u_char *) &value[i].data[5];
             gridfs_loc_conf->user.len = ngx_strlen(&value[i].data[5]);
             continue;
@@ -431,14 +431,14 @@ static ngx_int_t ngx_http_mongo_authenticate(ngx_log_t *log, ngx_http_gridfs_loc
 
     // Authenticate
     if (gridfs_loc_conf->user.data != NULL && gridfs_loc_conf->pass.data != NULL) {
-        if (mongo_cmd_authenticate( &mongo_conn->conn, 
-				    (const char*)gridfs_loc_conf->db.data, 
-				    (const char*)gridfs_loc_conf->user.data, 
+        if (mongo_cmd_authenticate( &mongo_conn->conn,
+				    (const char*)gridfs_loc_conf->db.data,
+				    (const char*)gridfs_loc_conf->user.data,
 				    (const char*)gridfs_loc_conf->pass.data )
 	    != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "Invalid mongo user/pass: %s/%s", 
-                          gridfs_loc_conf->user.data, 
+                          "Invalid mongo user/pass: %s/%s",
+                          gridfs_loc_conf->user.data,
                           gridfs_loc_conf->pass.data);
             return NGX_ERROR;
         }
@@ -490,18 +490,18 @@ static ngx_int_t ngx_http_mongo_add_connection(ngx_cycle_t* cycle, ngx_http_grid
 
     if ( gridfs_loc_conf->mongods->nelts == 1 ) {
         ngx_cpystrn( host, mongods[0].host.data, mongods[0].host.len + 1 );
-        status = mongo_connect( &mongo_conn->conn, (const char*)host, mongods[0].port );
+        status = mongo_client( &mongo_conn->conn, (const char*)host, mongods[0].port );
     } else if ( gridfs_loc_conf->mongods->nelts >= 2 && gridfs_loc_conf->mongods->nelts < 9 ) {
 
         /* Initiate replica set connection. */
-        mongo_replset_init( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
+        mongo_replica_set_init( &mongo_conn->conn, (const char *)gridfs_loc_conf->replset.data );
 
         /* Add replica set seeds. */
         for( i=0; i<gridfs_loc_conf->mongods->nelts; ++i ) {
             ngx_cpystrn( host, mongods[i].host.data, mongods[i].host.len + 1 );
-            mongo_replset_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
+            mongo_replica_set_add_seed( &mongo_conn->conn, (const char *)host, mongods[i].port );
         }
-        status = mongo_replset_connect( &mongo_conn->conn );
+        status = mongo_replica_set_client( &mongo_conn->conn );
     } else {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                           "Mongo Nginx Exception: Too many strings provided in 'mongo' directive.");
@@ -557,10 +557,10 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
 
     for (i = 0; i < gridfs_main_conf->loc_confs.nelts; i++) {
         if (ngx_http_mongo_add_connection(cycle, gridfs_loc_confs[i]) == NGX_ERROR) {
-            return NGX_ERROR;
+            return NGX_OK;
         }
         if (ngx_http_mongo_authenticate(cycle->log, gridfs_loc_confs[i]) == NGX_ERROR) {
-            return NGX_ERROR;
+            return NGX_OK;
         }
     }
 
@@ -570,7 +570,7 @@ static ngx_int_t ngx_http_gridfs_init_worker(ngx_cycle_t* cycle) {
 static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connection_t *mongo_conn) {
     volatile int status = MONGO_CONN_FAIL;
 
-    if (&mongo_conn->conn.connected) { 
+    if (&mongo_conn->conn.connected) {
         mongo_disconnect(&mongo_conn->conn);
         ngx_msleep(MONGO_RECONNECT_WAITTIME);
         status = mongo_reconnect(&mongo_conn->conn);
@@ -604,7 +604,7 @@ static ngx_int_t ngx_http_mongo_reconnect(ngx_log_t *log, ngx_http_mongo_connect
                           "Mongo Exception: Unknown Error");
             return NGX_ERROR;
     }
-    
+
     return NGX_OK;
 }
 
@@ -615,19 +615,19 @@ static ngx_int_t ngx_http_mongo_reauth(ngx_log_t *log, ngx_http_mongo_connection
     auths = mongo_conn->auths->elts;
 
     for (i = 0; i < mongo_conn->auths->nelts; i++) {
-        status = mongo_cmd_authenticate( &mongo_conn->conn, 
-					 (const char*)auths[i].db.data, 
-					 (const char*)auths[i].user.data, 
+        status = mongo_cmd_authenticate( &mongo_conn->conn,
+					 (const char*)auths[i].db.data,
+					 (const char*)auths[i].user.data,
 					 (const char*)auths[i].pass.data );
         if (status != MONGO_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "Invalid mongo user/pass: %s/%s, during reauth", 
-                          auths[i].user.data, 
-                          auths[i].pass.data);   
+                          "Invalid mongo user/pass: %s/%s, during reauth",
+                          auths[i].user.data,
+                          auths[i].pass.data);
             return NGX_ERROR;
         }
     }
-    
+
     return NGX_OK;
 }
 
@@ -667,6 +667,136 @@ static int url_decode(char * filename) {
     return 1;
 }
 
+static void gridfs_parse_range(ngx_http_request_t* r, ngx_str_t* range_str, uint64_t* range_start, uint64_t* range_end, gridfs_offset content_length) {
+    u_char *p, *last;
+    off_t start, end;
+    ngx_uint_t bad;
+    enum {
+        sw_start = 0,
+        sw_first_byte_pos,
+        sw_first_byte_pos_n,
+        sw_last_byte_pos,
+        sw_last_byte_pos_n,
+        sw_done
+    } state = 0;
+
+    p = (u_char *) ngx_strnstr(range_str->data, "bytes=", range_str->len);
+
+    if (p == NULL) {
+        return;
+    }
+
+    p += sizeof("bytes=") - 1;
+    last = range_str->data + range_str->len;
+
+    /*
+     * bytes= contain ranges compatible with RFC 2616, "14.35.1 Byte Ranges",
+     * but no whitespaces permitted
+     */
+
+    bad = 0;
+    start = 0;
+    end = 0;
+
+    while (p < last) {
+
+        switch (state) {
+
+        case sw_start:
+        case sw_first_byte_pos:
+            if (*p == '-') {
+                p++;
+                state = sw_last_byte_pos;
+                break;
+            }
+            start = 0;
+            state = sw_first_byte_pos_n;
+
+            /* fall through */
+
+        case sw_first_byte_pos_n:
+            if (*p == '-') {
+                p++;
+                state = sw_last_byte_pos;
+                break;
+            }
+            if (*p < '0' || *p > '9') {
+                ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                               "bytes header filter: unexpected char '%c'"
+                               " (expected first-byte-pos)", *p);
+                bad = 1;
+                break;
+            }
+            start = start * 10 + *p - '0';
+            p++;
+            break;
+
+        case sw_last_byte_pos:
+            if (*p == ',' || *p == '&' || *p == ';') {
+                /* no last byte pos, assume end of file */
+                end = content_length - 1;
+                state = sw_done;
+                break;
+            }
+            end = 0;
+            state = sw_last_byte_pos_n;
+
+            /* fall though */
+
+        case sw_last_byte_pos_n:
+            if (*p == ',' || *p == '&' || *p == ';') {
+                state = sw_done;
+                break;
+            }
+            if (*p < '0' || *p > '9') {
+                ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                               "bytes header filter: unexpected char '%c'"
+                               " (expected last-byte-pos)", *p);
+                bad = 1;
+                break;
+            }
+            end = end * 10 + *p - '0';
+            p++;
+            break;
+
+        case sw_done:
+            *range_start = start;
+            *range_end = end;
+
+            break;
+        }
+
+        if (bad) {
+            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "bytes header filter: invalid range specification");
+            return;
+        }
+    }
+
+    switch (state) {
+
+    case sw_last_byte_pos:
+        end = content_length - 1;
+
+    case sw_last_byte_pos_n:
+        if (start > end) {
+            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "bytes header filter: invalid range specification");
+            return;
+        }
+
+        *range_start = start;
+        *range_end = end;
+        break;
+
+    default:
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "bytes header filter: invalid range specification");
+        return;
+
+    }
+}
+
 static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_http_gridfs_loc_conf_t* gridfs_conf;
     ngx_http_core_loc_conf_t* core_conf;
@@ -696,8 +826,11 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_pool_cleanup_t* gridfs_cln;
     ngx_http_gridfs_cleanup_t* gridfs_clndata;
     int status;
-    volatile ngx_uint_t e = FALSE; 
+    volatile ngx_uint_t e = FALSE;
     volatile ngx_uint_t ecounter = 0;
+    uint64_t range_start = 0;
+    uint64_t range_end   = 0;
+    uint64_t current_buf_pos = 0;
 
     gridfs_conf = ngx_http_get_module_loc_conf(request, ngx_http_gridfs_module);
     core_conf = ngx_http_get_module_loc_conf(request, ngx_http_core_module);
@@ -710,14 +843,20 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
                       "Mongo Connection not found: \"%V\"", &gridfs_conf->mongo);
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    
-    if ( !(&mongo_conn->conn.connected)
-         && (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
-             || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR)) {
-        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                      "Could not connect to mongo: \"%V\"", &gridfs_conf->mongo);
-        if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
-        return NGX_HTTP_SERVICE_UNAVAILABLE;
+
+    if (mongo_conn->conn.connected == 0) {
+        if (ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Could not connect to mongo: \"%V\"", &gridfs_conf->mongo);
+            if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
+        if (ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                          "Failed to reauth to mongo: \"%V\"", &gridfs_conf->mongo);
+            if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
+        }
     }
 
     // ---------- RETRIEVE KEY ---------- //
@@ -751,17 +890,18 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
     do {
         e = FALSE;
-        if (gridfs_init(&mongo_conn->conn,
-                        (const char*)gridfs_conf->db.data,
-                        (const char*)gridfs_conf->root_collection.data,
-                        &gfs) != MONGO_OK) {
+        status = gridfs_init(&mongo_conn->conn,
+                             (const char*)gridfs_conf->db.data,
+                             (const char*)gridfs_conf->root_collection.data,
+                             &gfs);
+        if (status != MONGO_OK) {
             e = TRUE; ecounter++;
             if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
                 || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
                 || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                               "Mongo connection dropped, could not reconnect");
-                if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
                 free(value);
                 return NGX_HTTP_SERVICE_UNAVAILABLE;
             }
@@ -784,7 +924,7 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     bson_finish(&query);
 
     status = gridfs_find_query(&gfs, &query, &gfile);
-    
+
     bson_destroy(&query);
     free(value);
 
@@ -796,15 +936,65 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     /* Get information about the file */
     length = gridfile_get_contentlength(&gfile);
     numchunks = gridfile_get_numchunks(&gfile);
+
+    // NaN workaround
+    if (numchunks > INT_MAX)
+    {
+        gridfile_destroy(&gfile);
+        gridfs_destroy(&gfs);
+        return NGX_HTTP_NOT_FOUND;
+    }
+
     contenttype = (char*)gridfile_get_contenttype(&gfile);
 
     md5 = (char*)gridfile_get_md5(&gfile);
     last_modified = gridfile_get_uploaddate(&gfile);
 
+    // ---------- Partial Range
+    // set follow-fork-mode child
+    // attach (pid)
+    // break ngx_http_gridfs_module.c:959
+
+    if (request->headers_in.range) {
+        gridfs_parse_range(request, &request->headers_in.range->value, &range_start, &range_end, length);
+    }
+
     // ---------- SEND THE HEADERS ---------- //
 
-    request->headers_out.status = NGX_HTTP_OK;
-    request->headers_out.content_length_n = length;
+    if (range_start == 0 && range_end == 0) {
+        request->headers_out.status = NGX_HTTP_OK;
+        request->headers_out.content_length_n = length;
+    } else {
+        request->headers_out.status = NGX_HTTP_PARTIAL_CONTENT;
+        request->headers_out.content_length_n = length;
+        //request->headers_out.content_range = range_end - range_start + 1;
+
+        ngx_table_elt_t   *content_range;
+
+        content_range = ngx_list_push(&request->headers_out.headers);
+        if (content_range == NULL) {
+            return NGX_ERROR;
+        }
+
+        request->headers_out.content_range = content_range;
+
+        content_range->hash = 1;
+        ngx_str_set(&content_range->key, "Content-Range");
+
+        content_range->value.data = ngx_pnalloc(request->pool,sizeof("bytes -/") - 1 + 3 * NGX_OFF_T_LEN);
+        if (content_range->value.data == NULL) {
+            return NGX_ERROR;
+        }
+
+        /* "Content-Range: bytes SSSS-EEEE/TTTT" header */
+        content_range->value.len = ngx_sprintf(content_range->value.data,
+                                               "bytes %O-%O/%O",
+                                               range_start, range_end,
+                                               request->headers_out.content_length_n)
+            - content_range->value.data;
+
+        request->headers_out.content_length_n = range_end - range_start + 1;
+    }
     if (contenttype != NULL) {
         request->headers_out.content_type.len = strlen(contenttype);
         request->headers_out.content_type.data = (u_char*)contenttype;
@@ -818,13 +1008,13 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
         request->headers_out.etag->key.len = sizeof("ETag") - 1;
         request->headers_out.etag->key.data = (u_char*)"ETag";
 
-        ngx_buf_t *b;  
-        b = ngx_create_temp_buf(request->pool, strlen(md5) + 2);  
+        ngx_buf_t *b;
+        b = ngx_create_temp_buf(request->pool, strlen(md5) + 2);
         b->last = ngx_sprintf(b->last, "\"%s\"", md5);
         request->headers_out.etag->value.len = strlen(md5) + 2;
         request->headers_out.etag->value.data = b->start;
     }
-    
+
     // use uploadDate field as last_modified if possible
     if (last_modified) {
         request->headers_out.last_modified_time = (time_t)(last_modified/1000);
@@ -874,14 +1064,14 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
         return ngx_http_output_filter(request, &out);
     }
-    
+
     cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
     if (cursors == NULL) {
       gridfile_destroy(&gfile);
       gridfs_destroy(&gfs);
       return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    
+
     ngx_memzero( cursors, sizeof(mongo_cursor *) * numchunks);
 
     /* Hook in the cleanup function */
@@ -915,12 +1105,12 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
             cursors[i] = gridfile_get_chunks(&gfile, i, 1);
             if (!(cursors[i] && mongo_cursor_next(cursors[i]) == MONGO_OK)) {
                 e = TRUE; ecounter++;
-                if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST 
+                if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
                     || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
                     || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
                     ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
                                   "Mongo connection dropped, could not reconnect");
-                    if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                    if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
                     gridfile_destroy(&gfile);
                     gridfs_destroy(&gfs);
                     return NGX_HTTP_SERVICE_UNAVAILABLE;
@@ -930,19 +1120,58 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
         chunk = cursors[i]->current;
         bson_find(&it, &chunk, "data");
-        chunk_len = bson_iterator_bin_len( &it );
+        chunk_len = bson_iterator_bin_len( &it ); // break ngx_http_gridfs_module.c:1099
         chunk_data = bson_iterator_bin_data( &it );
 
-        /* Set up the buffer chain */
-        buffer->pos = (u_char*)chunk_data;
-        buffer->last = (u_char*)chunk_data + chunk_len;
-        buffer->memory = 1;
-        buffer->last_buf = (i == numchunks-1);
-        out.buf = buffer;
-        out.next = NULL;
+        if (range_start == 0 && range_end == 0) {
+            /* <<no range request>> */
+            /* Set up the buffer chain */
+            buffer->pos = (u_char*)chunk_data;
+            buffer->last = (u_char*)chunk_data + chunk_len;
+            buffer->memory = 1;
+            buffer->last_buf = (i == numchunks-1);
+            out.buf = buffer;
+            out.next = NULL;
 
-        /* Serve the Chunk */
-        rc = ngx_http_output_filter(request, &out);
+            /* Serve the Chunk */
+            rc = ngx_http_output_filter(request, &out);
+        } else {
+            /* <<range request>> */
+            if ( range_start >= (current_buf_pos+chunk_len) ||
+                 range_end <= current_buf_pos) {
+                /* no output */
+                ngx_pfree(request->pool, buffer);
+            } else {
+                if (range_start <= current_buf_pos) {
+                    buffer->pos = (u_char*)chunk_data;
+                } else {
+                    buffer->pos = (u_char*)chunk_data + (range_start - current_buf_pos);
+                }
+                if (range_end < (current_buf_pos+chunk_len)) {
+                    buffer->last = (u_char*)chunk_data + (range_end - current_buf_pos + 1);
+                } else {
+                    buffer->last = (u_char*)chunk_data + chunk_len;
+                }
+                if (buffer->pos == buffer->last) {
+                    ngx_log_error(NGX_LOG_ALERT, request->connection->log, 0,
+                                  "zero size buf in writer "
+                                  "range_start:%d range_end:%d "
+                                  "current_buf_pos:%d chunk_len:%d i:%d numchunk:%d",
+                                  range_start,range_end,
+                                  current_buf_pos, chunk_len,
+                                  i,numchunks);
+                }
+                buffer->memory = 1;
+                buffer->last_buf = (i == numchunks-1) || (range_end < (current_buf_pos+chunk_len));
+                out.buf = buffer;
+                out.next = NULL;
+
+                /* Serve the Chunk */
+                rc = ngx_http_output_filter(request, &out);
+            }
+        }
+
+        current_buf_pos += chunk_len;
 
         /* TODO: More Codes to Catch? */
         if (rc == NGX_ERROR) {
