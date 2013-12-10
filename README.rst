@@ -5,6 +5,9 @@ nginx-gridfs
     Chris Triolo,
     and everyone listed in the Credits section below
 
+Note from Mike: I'm no longer actively maintaining this project. If you're
+interested in becoming the new maintainer please shoot me an email.
+
 About
 =====
 **nginx-gridfs** is an `Nginx <http://nginx.net/>`_ module to serve
