@@ -1,3 +1,10 @@
+Unmaintained
+============
+Note this is an unmaintained fork of Mike's original (also unmaintained) repo.
+I've done /some/ work on it - namely solving the problem of stale sockets if mongodb restarts, as well as integrating some other pull requests that weren't in the original -
+but last time I tried this module wouldn't compile against latest version of nginx (1.5.7).
+I've since abandoned this approach, in favour of the node server here: https://github.com/rdkls/node-gridfs-http-frontend so won't be spending any more time trying to get it working. It's not far off though ...
+
 nginx-gridfs
 ============
 :Authors:

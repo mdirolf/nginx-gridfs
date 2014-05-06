@@ -888,26 +888,6 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
 
     // ---------- RETRIEVE GRIDFILE ---------- //
 
-    do {
-        e = FALSE;
-        status = gridfs_init(&mongo_conn->conn,
-                             (const char*)gridfs_conf->db.data,
-                             (const char*)gridfs_conf->root_collection.data,
-                             &gfs);
-        if (status != MONGO_OK) {
-            e = TRUE; ecounter++;
-            if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
-                || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
-                || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
-                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                              "Mongo connection dropped, could not reconnect");
-                if(mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
-                free(value);
-                return NGX_HTTP_SERVICE_UNAVAILABLE;
-            }
-        }
-    } while (e);
-
     bson_init(&query);
     switch (gridfs_conf->type) {
     case  BSON_OID:
@@ -923,15 +903,29 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     }
     bson_finish(&query);
 
-    status = gridfs_find_query(&gfs, &query, &gfile);
+    do {
+        e = FALSE;
+        if (gridfs_init(&mongo_conn->conn,
+                        (const char*)gridfs_conf->db.data,
+                        (const char*)gridfs_conf->root_collection.data,
+                        &gfs) != MONGO_OK
+            || (status = gridfs_find_query(&gfs, &query, &gfile) == MONGO_ERROR)) {
+            e = TRUE; ecounter++;
+            if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST
+                || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
+                || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                              "Mongo connection dropped, could not reconnect");
+                if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                bson_destroy(&query);
+                free(value);
+                return NGX_HTTP_SERVICE_UNAVAILABLE;
+            }
+        }
+    } while (e);
 
     bson_destroy(&query);
     free(value);
-
-    if(status == MONGO_ERROR) {
-        gridfs_destroy(&gfs);
-        return NGX_HTTP_NOT_FOUND;
-    }
 
     /* Get information about the file */
     length = gridfile_get_contentlength(&gfile);
