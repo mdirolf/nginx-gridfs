@@ -849,109 +849,111 @@ static ngx_int_t ngx_http_gridfs_handler(ngx_http_request_t* request) {
     ngx_http_send_header(request);
 
     // ---------- SEND THE BODY ---------- //
-
-    /* Empty file */
-    if (numchunks == 0) {
-        /* Allocate space for the response buffer */
-        buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
-        if (buffer == NULL) {
-            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                          "Failed to allocate response buffer");
-            gridfile_destroy(&gfile);
-            gridfs_destroy(&gfs);
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-
-        buffer->pos = NULL;
-        buffer->last = NULL;
-        buffer->memory = 1;
-        buffer->last_buf = 1;
-        out.buf = buffer;
-        out.next = NULL;
-
-        gridfile_destroy(&gfile);
-        gridfs_destroy(&gfs);
-
-        return ngx_http_output_filter(request, &out);
-    }
-    
-    cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
-    if (cursors == NULL) {
-      gridfile_destroy(&gfile);
-      gridfs_destroy(&gfs);
-      return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-    
-    ngx_memzero( cursors, sizeof(mongo_cursor *) * numchunks);
-
-    /* Hook in the cleanup function */
-    gridfs_cln = ngx_pool_cleanup_add(request->pool, sizeof(ngx_http_gridfs_cleanup_t));
-    if (gridfs_cln == NULL) {
-      gridfile_destroy(&gfile);
-      gridfs_destroy(&gfs);
-      return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-    gridfs_cln->handler = ngx_http_gridfs_cleanup;
-    gridfs_clndata = gridfs_cln->data;
-    gridfs_clndata->cursors = cursors;
-    gridfs_clndata->numchunks = numchunks;
-
-    /* Read and serve chunk by chunk */
-    for (i = 0; i < numchunks; i++) {
-
-        /* Allocate space for the response buffer */
-        buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
-        if (buffer == NULL) {
-            ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                          "Failed to allocate response buffer");
-            gridfile_destroy(&gfile);
-            gridfs_destroy(&gfs);
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
-
-        /* Fetch the chunk from mongo */
-        do {
-            e = FALSE;
-            cursors[i] = gridfile_get_chunks(&gfile, i, 1);
-            if (!(cursors[i] && mongo_cursor_next(cursors[i]) == MONGO_OK)) {
-                e = TRUE; ecounter++;
-                if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST 
-                    || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
-                    || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
-                    ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
-                                  "Mongo connection dropped, could not reconnect");
-                    if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
-                    gridfile_destroy(&gfile);
-                    gridfs_destroy(&gfs);
-                    return NGX_HTTP_SERVICE_UNAVAILABLE;
-                }
+    // Do not send the file on 304 (not modified) - fix for #58
+    if (request->headers_out.status != NGX_HTTP_NOT_MODIFIED) {
+        /* Empty file */
+        if (numchunks == 0) {
+            /* Allocate space for the response buffer */
+            buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
+            if (buffer == NULL) {
+                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                              "Failed to allocate response buffer");
+                gridfile_destroy(&gfile);
+                gridfs_destroy(&gfs);
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
-        } while (e);
 
-        chunk = cursors[i]->current;
-        bson_find(&it, &chunk, "data");
-        chunk_len = bson_iterator_bin_len( &it );
-        chunk_data = bson_iterator_bin_data( &it );
+            buffer->pos = NULL;
+            buffer->last = NULL;
+            buffer->memory = 1;
+            buffer->last_buf = 1;
+            out.buf = buffer;
+            out.next = NULL;
 
-        /* Set up the buffer chain */
-        buffer->pos = (u_char*)chunk_data;
-        buffer->last = (u_char*)chunk_data + chunk_len;
-        buffer->memory = 1;
-        buffer->last_buf = (i == numchunks-1);
-        out.buf = buffer;
-        out.next = NULL;
-
-        /* Serve the Chunk */
-        rc = ngx_http_output_filter(request, &out);
-
-        /* TODO: More Codes to Catch? */
-        if (rc == NGX_ERROR) {
             gridfile_destroy(&gfile);
             gridfs_destroy(&gfs);
-            return NGX_ERROR;
+
+            return ngx_http_output_filter(request, &out);
+        }
+    
+        cursors = (mongo_cursor **)ngx_pcalloc(request->pool, sizeof(mongo_cursor *) * numchunks);
+        if (cursors == NULL) {
+            gridfile_destroy(&gfile);
+            gridfs_destroy(&gfs);
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    
+        ngx_memzero( cursors, sizeof(mongo_cursor *) * numchunks);
+
+        /* Hook in the cleanup function */
+        gridfs_cln = ngx_pool_cleanup_add(request->pool, sizeof(ngx_http_gridfs_cleanup_t));
+        if (gridfs_cln == NULL) {
+            gridfile_destroy(&gfile);
+            gridfs_destroy(&gfs);
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        gridfs_cln->handler = ngx_http_gridfs_cleanup;
+        gridfs_clndata = gridfs_cln->data;
+        gridfs_clndata->cursors = cursors;
+        gridfs_clndata->numchunks = numchunks;
+
+        /* Read and serve chunk by chunk */
+        for (i = 0; i < numchunks; i++) {
+
+            /* Allocate space for the response buffer */
+            buffer = ngx_pcalloc(request->pool, sizeof(ngx_buf_t));
+            if (buffer == NULL) {
+                ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                              "Failed to allocate response buffer");
+                gridfile_destroy(&gfile);
+                gridfs_destroy(&gfs);
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            /* Fetch the chunk from mongo */
+            do {
+                e = FALSE;
+                cursors[i] = gridfile_get_chunks(&gfile, i, 1);
+                if (!(cursors[i] && mongo_cursor_next(cursors[i]) == MONGO_OK)) {
+                    e = TRUE; ecounter++;
+                    if (ecounter > MONGO_MAX_RETRIES_PER_REQUEST 
+                        || ngx_http_mongo_reconnect(request->connection->log, mongo_conn) == NGX_ERROR
+                        || ngx_http_mongo_reauth(request->connection->log, mongo_conn) == NGX_ERROR) {
+                        ngx_log_error(NGX_LOG_ERR, request->connection->log, 0,
+                                      "Mongo connection dropped, could not reconnect");
+                        if(&mongo_conn->conn.connected) { mongo_disconnect(&mongo_conn->conn); }
+                        gridfile_destroy(&gfile);
+                        gridfs_destroy(&gfs);
+                        return NGX_HTTP_SERVICE_UNAVAILABLE;
+                    }
+                }
+            } while (e);
+
+            chunk = cursors[i]->current;
+            bson_find(&it, &chunk, "data");
+            chunk_len = bson_iterator_bin_len( &it );
+            chunk_data = bson_iterator_bin_data( &it );
+
+            /* Set up the buffer chain */
+            buffer->pos = (u_char*)chunk_data;
+            buffer->last = (u_char*)chunk_data + chunk_len;
+            buffer->memory = 1;
+            buffer->last_buf = (i == numchunks-1);
+            out.buf = buffer;
+            out.next = NULL;
+
+            /* Serve the Chunk */
+            rc = ngx_http_output_filter(request, &out);
+
+            /* TODO: More Codes to Catch? */
+            if (rc == NGX_ERROR) {
+                gridfile_destroy(&gfile);
+                gridfs_destroy(&gfs);
+                return NGX_ERROR;
+            }
         }
     }
-
+    
     gridfile_destroy(&gfile);
     gridfs_destroy(&gfs);
 
